@@ -2,20 +2,24 @@ console.log('[Background] Service worker loaded');
 
 let offscreenPort = null;
 
-async function createOffscreenDocument() {
+// Ensure offscreen doc only gets created once
+async function ensureOffscreenDocument() {
   try {
+    const exists = await chrome.offscreen.hasDocument();
+    if (exists) {
+      console.log('[Background] Offscreen document already exists');
+      return;
+    }
+
     await chrome.offscreen.createDocument({
       url: 'offscreen.html',
-      reasons: ['WORKERS'],
-      justification: 'Run TensorFlow models for spoiler detection'
+      reasons: [chrome.offscreen.Reason.WORKERS], // explicit constant
+      justification: 'Run ML models for spoiler detection'
     });
+
     console.log('[Background] Offscreen document created');
   } catch (e) {
-    if (e.message.includes('already exists')) {
-      console.log('[Background] Offscreen document already exists');
-    } else {
-      console.error('[Background] Failed to create offscreen document:', e);
-    }
+    console.error('[Background] Failed to create offscreen document:', e);
   }
 }
 
@@ -26,7 +30,6 @@ chrome.runtime.onConnect.addListener((port) => {
 
     offscreenPort.onMessage.addListener((msg) => {
       console.log("[Background] Received from offscreen:", msg);
-      // You can forward these to content scripts or popup if needed
     });
 
     offscreenPort.onDisconnect.addListener(() => {
@@ -36,9 +39,8 @@ chrome.runtime.onConnect.addListener((port) => {
   }
 });
 
-// Relay messages from content scripts or popup to offscreen document via port
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'ANALYZE_IMAGE' || message.type === 'INIT_ML') {
+  if (message.type === 'INIT_ML' || message.type === 'ANALYZE_IMAGE') {
     const forwardMessage = () => {
       if (!offscreenPort) {
         console.warn("[Background] No connection to offscreen");
@@ -55,24 +57,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       offscreenPort.postMessage(message);
     };
 
-    if (!offscreenPort) {
-      createOffscreenDocument().then(() => {
-        setTimeout(forwardMessage, 500);
-      });
-    } else {
-      forwardMessage();
-    }
+    ensureOffscreenDocument().then(() => {
+      setTimeout(forwardMessage, 300); // give offscreen a bit of time to connect
+    });
 
-    return true; // Keep channel open
+    return true; // async sendResponse
   }
 });
 
+// One-time setup
 chrome.runtime.onStartup.addListener(() => {
   console.log('[Background] Extension startup');
-  createOffscreenDocument();
+  ensureOffscreenDocument();
 });
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[Background] Extension installed');
-  createOffscreenDocument();
+  ensureOffscreenDocument();
 });

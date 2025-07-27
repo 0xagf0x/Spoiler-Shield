@@ -152,6 +152,7 @@ class ImageSpoilerDetector {
             shouldBlur: true,
             confidence: 0.9,
             reason: `Spoiler keywords detected: ${term}`,
+            category: mediaContext.type || null, 
           };
         }
 
@@ -182,7 +183,7 @@ class ImageSpoilerDetector {
       }
     }
 
-    return { shouldBlur: false, confidence: 0, reason: "passed quick check" };
+    return { shouldBlur: false, confidence: 0, reason: "passed quick check", category: null };
   }
 
   checkMediaContext(text, term) {
@@ -345,25 +346,35 @@ class VisualSpoilerShield {
     });
   }
 
-  async analyzeAndBlurImage(imgElement) {
-    try {
-      const analysis = await this.imageDetector.analyzeImage(imgElement, this.watchlist);
+async analyzeAndBlurImage(imgElement) {
+  try {
+    const imageData = await this.imageDetector.extractImageData(imgElement); // <-- fixed line
 
-      if (analysis.shouldBlur) {
-        console.log("[Visual Shield] Blurring image:", {
-          src: imgElement.src.substring(0, 60) + "...",
-          confidence: Math.round(analysis.confidence * 100) + "%",
-          reason: analysis.reason,
-          type: analysis.type,
-        });
+    const analysis = await this.imageDetector.analyzeImageData(
+      imageData,
+      imgElement.width,
+      imgElement.height,
+      this.watchlist
+    );
 
-        this.blurImage(imgElement, analysis);
-      }
-    } catch (error) {
+    if (analysis.shouldBlur) {
+      console.log("[Visual Shield] Blurring image:", {
+        src: imgElement.src.substring(0, 60) + "...",
+        confidence: Math.round(analysis.confidence * 100) + "%",
+        reason: analysis.reason,
+        type: analysis.type,
+      });
+      this.blurImage(imgElement, analysis);
+    }
+  } catch (error) {
+    if (error.name === "SecurityError") {
+      console.warn("[Visual Shield] Image data extraction failed (cross-origin). Falling back to text blur.");
+      this.blurTextAroundImage(imgElement);
+    } else {
       console.error("[Visual Shield] Error analyzing image:", error);
     }
   }
-
+}
   blurImage(imgElement, analysis) {
     // Prevent double-processing
     if (imgElement.dataset.spoilerBlurred === "1") return;
@@ -398,6 +409,22 @@ class VisualSpoilerShield {
     this.setupRevealHandlers(wrapper, imgElement, overlay, analysis);
   }
 
+  blurTextAroundImage(imgElement) {
+  // Option 1: Blur immediate parent container to cover text + image
+  const container = imgElement.closest('.post, .comment, .content, .tweet, .article') || imgElement.parentElement;
+
+  if (container) {
+    container.style.filter = 'blur(8px)';
+    container.style.transition = 'filter 0.3s ease';
+    console.log('[Visual Shield] Applied fallback blur to container');
+  } else {
+    // Option 2: If no container found, blur just the image as last resort
+    imgElement.style.filter = 'blur(8px)';
+    imgElement.style.transition = 'filter 0.3s ease';
+    console.log('[Visual Shield] Applied fallback blur to image');
+  }
+}
+
   createRevealOverlay(analysis) {
     const overlay = document.createElement("div");
     overlay.style.cssText = `
@@ -419,7 +446,7 @@ class VisualSpoilerShield {
 
     const confidencePercent = Math.round(analysis.confidence * 100);
     const detectionType = analysis.type === 'ml_analysis' ? '🤖' : '🔍';
-    
+    const category = analysis.category || "Spoiler";
     const revealButton = document.createElement("div");
     revealButton.innerHTML = `
       <div style="
@@ -438,7 +465,7 @@ class VisualSpoilerShield {
         transform: scale(0.95);
         transition: transform 0.2s ease;
       ">
-        🛡️ Spoiler Detected
+        ${category} Detected
         <div style="
           font-size: 12px; 
           opacity: 0.9;
