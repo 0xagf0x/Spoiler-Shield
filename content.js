@@ -146,7 +146,7 @@ class SpoilerShield {
     element.dataset.spoilerBlurred = 'true';
 
     // Apply blur effect
-    element.style.filter = 'blur(8px)';
+    element.style.filter = 'blur(32px) brightness(20%)';
     element.style.transition = 'filter 0.3s ease';
     element.style.cursor = 'pointer';
     element.style.position = 'relative';
