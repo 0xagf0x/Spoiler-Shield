@@ -1,55 +1,78 @@
-// background.js
-console.log('[Spoiler Shield] Background script loaded');
+console.log('[Background] Service worker loaded');
 
-// Handle extension installation
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('[Spoiler Shield] Extension installed');
-  
-  // Set default storage values if they don't exist
-  chrome.storage.sync.get(['watchlist'], (result) => {
-    if (!result.watchlist) {
-      chrome.storage.sync.set({ 
-        watchlist: [],
-        settings: {
-          aiEnabled: true,
-          contextAware: true,
-          blurIntensity: 6
-        }
-      });
+let offscreenPort = null;
+
+async function createOffscreenDocument() {
+  try {
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['WORKERS'],
+      justification: 'Run TensorFlow models for spoiler detection'
+    });
+    console.log('[Background] Offscreen document created');
+  } catch (e) {
+    if (e.message.includes('already exists')) {
+      console.log('[Background] Offscreen document already exists');
+    } else {
+      console.error('[Background] Failed to create offscreen document:', e);
     }
-  });
-});
+  }
+}
 
-// Handle messages from content scripts and popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'getSpoilerStats') {
-    // Could implement statistics tracking here
-    sendResponse({ 
-      blocked: 0, // placeholder
-      enabled: true 
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === "offscreen-port") {
+    console.log("[Background] Connected to offscreen via port");
+    offscreenPort = port;
+
+    offscreenPort.onMessage.addListener((msg) => {
+      console.log("[Background] Received from offscreen:", msg);
+      // You can forward these to content scripts or popup if needed
+    });
+
+    offscreenPort.onDisconnect.addListener(() => {
+      console.warn("[Background] Offscreen port disconnected");
+      offscreenPort = null;
     });
   }
 });
 
-// Optional: Badge update when spoilers are blocked
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'spoilerBlocked') {
-    // Update badge with count of blocked spoilers
-    chrome.action.setBadgeText({
-      text: '!',
-      tabId: sender.tab.id
-    });
-    
-    chrome.action.setBadgeBackgroundColor({
-      color: '#FF4444'
-    });
-    
-    // Clear badge after 3 seconds
-    setTimeout(() => {
-      chrome.action.setBadgeText({
-        text: '',
-        tabId: sender.tab.id
+// Relay messages from content scripts or popup to offscreen document via port
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'ANALYZE_IMAGE' || message.type === 'INIT_ML') {
+    const forwardMessage = () => {
+      if (!offscreenPort) {
+        console.warn("[Background] No connection to offscreen");
+        sendResponse({ error: "Offscreen not ready" });
+        return;
+      }
+
+      const handler = (response) => {
+        sendResponse(response);
+        offscreenPort.onMessage.removeListener(handler);
+      };
+
+      offscreenPort.onMessage.addListener(handler);
+      offscreenPort.postMessage(message);
+    };
+
+    if (!offscreenPort) {
+      createOffscreenDocument().then(() => {
+        setTimeout(forwardMessage, 500);
       });
-    }, 3000);
+    } else {
+      forwardMessage();
+    }
+
+    return true; // Keep channel open
   }
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  console.log('[Background] Extension startup');
+  createOffscreenDocument();
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('[Background] Extension installed');
+  createOffscreenDocument();
 });

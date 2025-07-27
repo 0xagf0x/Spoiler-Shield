@@ -1,20 +1,38 @@
 {
-    "manifest_version": 3,
-    "name": "Spoiler Shield",
-    "version": "0.1",
-    "description": "Block spoilers from Reddit, Twitter, and Facebook until you're ready.",
-    "action": {
-        "default_popup": "popup/popup.html",
-        "default_icon": {
-            "1": "icons/icon1.png"
-        }
-    },
-    "permissions": [
-        "scripting",
-        "activeTab",
-        "storage"
-    ],
-    "host_permissions": [
+  "manifest_version": 3,
+  "name": "Spoiler Shield",
+  "version": "0.1",
+  "description": "Block spoilers from Reddit, Twitter, and Facebook until you're ready.",
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon1.png",
+      "32": "icons/icon1.png",
+      "48": "icons/icon1.png",
+      "128": "icons/icon1.png"
+    }
+  },
+  "permissions": [
+    "scripting",
+    "activeTab", 
+    "storage",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "*://*.reddit.com/*",
+    "*://*.twitter.com/*",
+    "*://*.x.com/*",
+    "*://*.facebook.com/*",
+    "*://*.google.com/*",
+    "*://*.youtube.com/*",
+    "*://*.instagram.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
         "*://*.reddit.com/*",
         "*://*.twitter.com/*",
         "*://*.x.com/*",
@@ -22,24 +40,18 @@
         "*://*.google.com/*",
         "*://*.youtube.com/*",
         "*://*.instagram.com/*"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+  {
+    "resources": [
+      "lib/*.wasm"
     ],
-    "background": {
-        "service_worker": "background.js"
-    },
-    "content_scripts": [
-        {
-            "matches": [
-                "*://*.reddit.com/*",
-                "*://*.twitter.com/*",
-                "*://*.x.com/*",
-                "*://*.facebook.com/*",
-                "*://*.google.com/*",
-                "*://*.youtube.com/*",
-                "*://*.instagram.com/*"
-            ],
-            "js": [
-                "content.js"
-            ]
-        }
-    ]
+    "matches": ["<all_urls>"]
+  }
+]
 }

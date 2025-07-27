@@ -1,309 +1,229 @@
 // Enhanced Spoiler Shield with Image Recognition
-console.log('[Spoiler Shield Vision] Loaded on', window.location.hostname);
-
-const tfjsScript = document.createElement('script');
-tfjsScript.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js';
-document.head.appendChild(tfjsScript);
-
-mobilenetScript.onload = () => {
-  console.log('All TF scripts loaded, ready to initialize models');
-
-  // Initialize the ImageSpoilerDetector to load the TF models
-  const imageSpoilerDetector = new ImageSpoilerDetector();
-
-  // Wait for models to finish loading before starting the shield
-  (async () => {
-    // Poll until models loaded or timeout after 10 seconds
-    const waitForModels = () => new Promise((resolve, reject) => {
-      const start = Date.now();
-      const check = () => {
-        if (imageSpoilerDetector.mobilenetModel && imageSpoilerDetector.cocoSsdModel) {
-          resolve();
-        } else if (Date.now() - start > 10000) {
-          reject('Timeout loading TF models');
-        } else {
-          setTimeout(check, 200);
-        }
-      };
-      check();
-    });
-
-    try {
-      await waitForModels();
-      console.log('[Vision] Models ready, starting VisualSpoilerShield');
-
-      // Pass the loaded image detector into the visual shield to reuse models
-      const visualShield = new VisualSpoilerShield();
-      // Replace the shield's imageDetector with the one with loaded models
-      visualShield.imageDetector = imageSpoilerDetector;
-      // Initialize the shield logic (load watchlist, scan images, etc.)
-      await visualShield.initialize();
-    } catch (err) {
-      console.error('[Vision] Failed to load models:', err);
-      // You can fallback to simpler logic or just start VisualSpoilerShield anyway
-      const visualShield = new VisualSpoilerShield();
-      await visualShield.initialize();
-    }
-  })();
-};
-
+console.log("[Spoiler Shield Vision] Loaded on", window.location.hostname);
 
 class ImageSpoilerDetector {
   constructor() {
-    this.mobilenetModel = null;
-    this.cocoSsdModel = null;
-    this.isLoading = false;
-    this.imageCache = new Map();
-    this.initializeModels();
+    this.mlReady = false;
+    this.initializingML = false;
   }
 
-  async initializeModels() {
-    if (this.isLoading) return;
-    this.isLoading = true;
-
+  async initializeML() {
+    if (this.mlReady || this.initializingML) return this.mlReady;
+    
+    this.initializingML = true;
+    
     try {
-      console.log('[Vision] Loading TensorFlow models...');
-      
-      // Load MobileNet for general image classification
-      this.mobilenetModel = await tf.loadLayersModel('https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/classification/5/default/1', {
-        fromTFHub: true
-      });
-      
-      // Load COCO-SSD for object detection (detects people, faces, etc.)
-      this.cocoSsdModel = await cocoSsd.load();
-      
-      console.log('[Vision] Models loaded successfully');
+      const response = await chrome.runtime.sendMessage({ type: 'INIT_ML' });
+      this.mlReady = response && response.success;
+      console.log('[Vision] ML initialization result:', this.mlReady);
     } catch (error) {
-      console.error('[Vision] Failed to load models, using fallback detection:', error);
-      // Continue with simpler detection methods
+      console.warn('[Vision] ML initialization failed:', error);
+      this.mlReady = false;
     }
     
-    this.isLoading = false;
+    this.initializingML = false;
+    return this.mlReady;
   }
 
   // Main image analysis function
   async analyzeImage(imgElement, watchlistTerms) {
+    if (!imgElement || !watchlistTerms.length) {
+      return { shouldBlur: false, confidence: 0, reason: "no data" };
+    }
+
     try {
-      // Quick checks first
+      // Always do quick checks first (these are fast and don't require ML)
       const quickCheck = this.quickImageCheck(imgElement, watchlistTerms);
       if (quickCheck.shouldBlur) {
-        return { 
-          shouldBlur: true, 
+        return {
+          shouldBlur: true,
           confidence: quickCheck.confidence,
           reason: quickCheck.reason,
-          type: 'quick'
+          type: "quick",
         };
       }
 
-      // Deep ML analysis
-      if (this.mobilenetModel && this.cocoSsdModel) {
-        const mlAnalysis = await this.deepImageAnalysis(imgElement, watchlistTerms);
-        if (mlAnalysis.shouldBlur) {
-          return mlAnalysis;
+      // Try ML analysis if available
+      if (!this.mlReady) {
+        await this.initializeML();
+      }
+
+      if (this.mlReady) {
+        try {
+          const mlAnalysis = await this.performMLAnalysis(imgElement, watchlistTerms);
+          if (mlAnalysis.shouldBlur) {
+            return mlAnalysis;
+          }
+        } catch (mlError) {
+          console.warn("[Vision] ML analysis failed:", mlError);
         }
       }
 
-      return { shouldBlur: false, confidence: 0, reason: 'safe' };
+      return { shouldBlur: false, confidence: 0, reason: "passed all checks" };
     } catch (error) {
-      console.error('[Vision] Image analysis error:', error);
-      return { shouldBlur: false, confidence: 0, reason: 'error' };
+      console.error("[Vision] Image analysis error:", error);
+      return { shouldBlur: false, confidence: 0, reason: "analysis error" };
     }
   }
 
-  // Quick heuristic checks before expensive ML
+  async performMLAnalysis(imgElement, watchlistTerms) {
+    try {
+      // Extract image data
+      const imageData = await this.extractImageData(imgElement);
+      if (!imageData) {
+        return { shouldBlur: false, confidence: 0, reason: "no image data" };
+      }
+
+      // Send to offscreen document for ML processing
+      const response = await chrome.runtime.sendMessage({
+        type: 'ANALYZE_IMAGE',
+        imageData: imageData.data,
+        width: imageData.width,
+        height: imageData.height,
+        watchlistTerms: watchlistTerms
+      });
+
+      return response || { shouldBlur: false, confidence: 0, reason: "no response" };
+
+    } catch (error) {
+      console.error("[Vision] ML analysis error:", error);
+      return { shouldBlur: false, confidence: 0, reason: "ml error" };
+    }
+  }
+
+  async extractImageData(imgElement) {
+    try {
+      // Create canvas to extract image data
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Set canvas size (resize for performance)
+      const maxSize = 416; // Good balance between accuracy and performance
+      const aspectRatio = imgElement.naturalWidth / imgElement.naturalHeight;
+      
+      if (aspectRatio > 1) {
+        canvas.width = maxSize;
+        canvas.height = maxSize / aspectRatio;
+      } else {
+        canvas.width = maxSize * aspectRatio;
+        canvas.height = maxSize;
+      }
+
+      // Draw image to canvas
+      ctx.drawImage(imgElement, 0, 0, canvas.width, canvas.height);
+      
+      // Get image data
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      
+      return {
+        data: Array.from(imageData.data), // Convert Uint8ClampedArray to regular array
+        width: canvas.width,
+        height: canvas.height
+      };
+
+    } catch (error) {
+      console.error("[Vision] Image data extraction error:", error);
+      return null;
+    }
+  }
+
+  // Quick heuristic checks (no ML required)
   quickImageCheck(imgElement, watchlistTerms) {
-    const src = imgElement.src || '';
-    const alt = imgElement.alt || '';
-    const title = imgElement.title || '';
+    const src = imgElement.src || "";
+    const alt = imgElement.alt || "";
+    const title = imgElement.title || "";
     const allText = `${src} ${alt} ${title}`.toLowerCase();
 
-    // Check for spoiler keywords in image metadata
+    // Check for explicit spoiler keywords
     for (const term of watchlistTerms) {
-      if (allText.includes(term.toLowerCase())) {
-        // Check for spoiler context clues
+      const termLower = term.toLowerCase();
+      if (allText.includes(termLower)) {
+        // Look for spoiler context clues
         const spoilerClues = [
-          'spoiler', 'ending', 'finale', 'death', 'winner', 'result', 
-          'screenshot', 'scene', 'episode', 'season', 'chapter'
+          "spoiler", "ending", "finale", "death", "winner", "result",
+          "screenshot", "scene", "episode", "season", "chapter", "leak",
+          "leaked", "reveal", "revealed", "plot", "twist", "outcome"
         ];
-        
+
         const hasSpoilerClue = spoilerClues.some(clue => allText.includes(clue));
         
         if (hasSpoilerClue) {
           return {
             shouldBlur: true,
-            confidence: 0.8,
-            reason: `Spoiler keywords detected: ${term}`
+            confidence: 0.9,
+            reason: `Spoiler keywords detected: ${term}`,
+          };
+        }
+
+        // Check for media context even without explicit spoiler words
+        const mediaContext = this.checkMediaContext(allText, termLower);
+        if (mediaContext.isMedia) {
+          return {
+            shouldBlur: true,
+            confidence: 0.75,
+            reason: `Media content detected: ${term} (${mediaContext.type})`,
           };
         }
       }
     }
 
-    // Check image dimensions - screenshots tend to be landscape
-    const aspectRatio = imgElement.naturalWidth / imgElement.naturalHeight;
-    if (aspectRatio > 1.5 && imgElement.naturalWidth > 400) {
-      // Likely a screenshot - check for media-related terms
-      const mediaTerms = watchlistTerms.some(term => 
-        ['f1', 'formula', 'dragon', 'thrones', 'marvel', 'star wars'].some(media => 
-          term.toLowerCase().includes(media)
-        )
+    // Check if image looks like a screenshot
+    if (this.looksLikeScreenshot(imgElement, allText)) {
+      const hasWatchlistTerm = watchlistTerms.some(term => 
+        allText.includes(term.toLowerCase())
       );
       
-      if (mediaTerms && allText.length > 10) {
+      if (hasWatchlistTerm) {
         return {
           shouldBlur: true,
-          confidence: 0.6,
-          reason: 'Likely screenshot of media content'
+          confidence: 0.65,
+          reason: "Likely screenshot with watchlist terms",
         };
       }
     }
 
-    return { shouldBlur: false, confidence: 0, reason: 'passed quick check' };
+    return { shouldBlur: false, confidence: 0, reason: "passed quick check" };
   }
 
-  // Deep ML analysis using TensorFlow models
-  async deepImageAnalysis(imgElement, watchlistTerms) {
-    try {
-      // Convert image to tensor
-      const tensor = this.preprocessImage(imgElement);
-      if (!tensor) return { shouldBlur: false, confidence: 0, reason: 'preprocessing failed' };
+  checkMediaContext(text, term) {
+    const mediaTypes = {
+      'f1': ['formula', 'racing', 'race', 'grand prix', 'gp', 'verstappen', 'hamilton', 'ferrari', 'mercedes'],
+      'game of thrones': ['got', 'dragon', 'westeros', 'hbo', 'targaryen', 'stark', 'lannister'],
+      'house of dragon': ['hotd', 'daemon', 'rhaenyra', 'targaryen', 'westeros'],
+      'marvel': ['mcu', 'avengers', 'spider', 'iron man', 'thor', 'hulk', 'captain america'],
+      'star wars': ['jedi', 'sith', 'force', 'skywalker', 'vader', 'luke', 'leia'],
+      'netflix': ['series', 'show', 'season', 'episode', 'stranger things', 'wednesday'],
+      'breaking bad': ['heisenberg', 'walter white', 'jesse', 'saul'],
+      'the office': ['dunder mifflin', 'scranton', 'michael scott', 'jim', 'pam']
+    };
 
-      // Object detection - look for people, faces, etc.
-      const detections = await this.cocoSsdModel.detect(imgElement);
-      
-      // Image classification
-      const predictions = await this.mobilenetModel.predict(tensor).data();
-      const topPredictions = this.getTopPredictions(predictions);
-
-      tensor.dispose(); // Clean up memory
-
-      // Analyze results
-      const analysis = this.analyzeMLResults(detections, topPredictions, watchlistTerms);
-      
-      return analysis;
-    } catch (error) {
-      console.error('[Vision] Deep analysis error:', error);
-      return { shouldBlur: false, confidence: 0, reason: 'analysis error' };
+    for (const [media, keywords] of Object.entries(mediaTypes)) {
+      if (term.includes(media) || keywords.some(kw => term.includes(kw))) {
+        const hasContext = keywords.some(kw => text.includes(kw));
+        if (hasContext) {
+          return { isMedia: true, type: media };
+        }
+      }
     }
+
+    return { isMedia: false, type: null };
   }
 
-  preprocessImage(imgElement) {
-    try {
-      // Create canvas to process image
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      // Resize to model input size (224x224 for MobileNet)
-      canvas.width = 224;
-      canvas.height = 224;
-      
-      ctx.drawImage(imgElement, 0, 0, 224, 224);
-      
-      // Convert to tensor
-      const tensor = tf.browser.fromPixels(canvas)
-        .resizeNearestNeighbor([224, 224])
-        .toFloat()
-        .div(255.0)
-        .expandDims();
-      
-      return tensor;
-    } catch (error) {
-      console.error('[Vision] Image preprocessing error:', error);
-      return null;
-    }
-  }
-
-  getTopPredictions(predictions, topK = 5) {
-    // Get top K predictions from ImageNet classifications
-    const predArray = Array.from(predictions);
-    const indexed = predArray.map((prob, index) => ({ prob, index }));
-    indexed.sort((a, b) => b.prob - a.prob);
+  looksLikeScreenshot(imgElement, text) {
+    // Check aspect ratio - screenshots are often widescreen
+    const aspectRatio = imgElement.naturalWidth / imgElement.naturalHeight;
+    const isWidescreen = aspectRatio > 1.4;
+    const isLargeEnough = imgElement.naturalWidth > 300;
     
-    return indexed.slice(0, topK).map(item => ({
-      probability: item.prob,
-      classIndex: item.index,
-      className: this.getImageNetClass(item.index)
-    }));
-  }
-
-  analyzeMLResults(detections, predictions, watchlistTerms) {
-    let confidence = 0;
-    let reasons = [];
-
-    // Analyze object detections
-    for (const detection of detections) {
-      if (detection.score > 0.5) {
-        if (detection.class === 'person') {
-          confidence += 0.3;
-          reasons.push('Person detected in image');
-        }
-        
-        // Check for vehicles (F1 cars, etc.)
-        if (['car', 'truck', 'motorcycle'].includes(detection.class)) {
-          const hasF1Terms = watchlistTerms.some(term => 
-            term.toLowerCase().includes('f1') || term.toLowerCase().includes('formula')
-          );
-          if (hasF1Terms) {
-            confidence += 0.4;
-            reasons.push('Vehicle detected with F1 in watchlist');
-          }
-        }
-      }
-    }
-
-    // Analyze image classifications
-    for (const pred of predictions) {
-      if (pred.probability > 0.1) {
-        // Check for sports-related classifications
-        const sportsClasses = ['race car', 'sports car', 'helmet', 'stadium'];
-        if (sportsClasses.some(cls => pred.className.toLowerCase().includes(cls))) {
-          const hasSportsTerms = watchlistTerms.some(term => 
-            ['f1', 'formula', 'racing', 'sport'].some(sport => 
-              term.toLowerCase().includes(sport)
-            )
-          );
-          if (hasSportsTerms) {
-            confidence += pred.probability * 0.5;
-            reasons.push(`Sports content detected: ${pred.className}`);
-          }
-        }
-
-        // Check for TV/movie related content
-        const mediaClasses = ['television', 'screen', 'movie theater'];
-        if (mediaClasses.some(cls => pred.className.toLowerCase().includes(cls))) {
-          const hasMediaTerms = watchlistTerms.some(term => 
-            ['dragon', 'thrones', 'marvel', 'star wars', 'netflix'].some(media => 
-              term.toLowerCase().includes(media)
-            )
-          );
-          if (hasMediaTerms) {
-            confidence += pred.probability * 0.4;
-            reasons.push(`Media content detected: ${pred.className}`);
-          }
-        }
-      }
-    }
-
-    return {
-      shouldBlur: confidence > 0.4,
-      confidence: Math.min(confidence, 1.0),
-      reason: reasons.join('; ') || 'ML analysis',
-      type: 'deep',
-      detections: detections.length,
-      topPrediction: predictions[0]?.className || 'unknown'
-    };
-  }
-
-  // Simplified ImageNet class names (you'd want the full list in production)
-  getImageNetClass(index) {
-    const commonClasses = {
-      751: 'race car',
-      817: 'sports car', 
-      468: 'television',
-      510: 'computer screen',
-      634: 'stadium',
-      514: 'helmet'
-    };
-    return commonClasses[index] || `class_${index}`;
+    // Check for screenshot indicators in text
+    const screenshotClues = ['screenshot', 'screen', 'cap', 'grab', 'snap'];
+    const hasScreenshotClue = screenshotClues.some(clue => text.includes(clue));
+    
+    // UI elements that suggest this might be a screenshot
+    const uiElements = ['button', 'menu', 'interface', 'ui', 'app', 'browser'];
+    const hasUIElements = uiElements.some(ui => text.includes(ui));
+    
+    return isWidescreen && isLargeEnough && (hasScreenshotClue || hasUIElements);
   }
 }
 
@@ -312,15 +232,31 @@ class VisualSpoilerShield {
     this.imageDetector = new ImageSpoilerDetector();
     this.watchlist = [];
     this.processedImages = new Set();
-    this.initialize();
+    this.isInitialized = false;
+    this.scanCount = 0;
   }
 
   async initialize() {
-    chrome.storage.sync.get(['watchlist'], (res) => {
-      this.watchlist = res.watchlist || [];
-      if (!this.watchlist.length) return;
+    if (this.isInitialized) return;
+    
+    try {
+      const result = await new Promise((resolve) => {
+        chrome.storage.sync.get(['watchlist'], resolve);
+      });
+      
+      this.watchlist = result.watchlist || [];
+      
+      if (!this.watchlist.length) {
+        console.log('[Visual Shield] No watchlist terms found');
+        return;
+      }
 
       console.log('[Visual Shield] Initialized with watchlist:', this.watchlist);
+
+      // Initialize ML in background
+      this.imageDetector.initializeML().then(ready => {
+        console.log('[Visual Shield] ML ready:', ready);
+      });
 
       // Scan existing images
       this.scanImagesOnPage();
@@ -330,85 +266,147 @@ class VisualSpoilerShield {
       this.setupLazyLoadObserver();
 
       // Periodic rescans for dynamic content
-      setInterval(() => this.scanImagesOnPage(), 3000);
-    });
+      setInterval(() => this.scanImagesOnPage(), 6000);
+      
+      this.isInitialized = true;
+      
+    } catch (error) {
+      console.error('[Visual Shield] Initialization error:', error);
+    }
   }
 
   async scanImagesOnPage() {
-    const images = document.querySelectorAll('img[src]:not([data-spoiler-checked])');
-    console.log(`[Visual Shield] Scanning ${images.length} new images`);
+    if (!this.watchlist.length) return;
+    
+    const images = document.querySelectorAll("img[src]:not([data-spoiler-checked])");
+    if (images.length === 0) return;
+    
+    this.scanCount++;
+    console.log(`[Visual Shield] Scan #${this.scanCount}: ${images.length} new images`);
 
-    for (const img of images) {
-      img.dataset.spoilerChecked = '1';
+    // Process images in smaller batches to avoid blocking
+    const batchSize = 3;
+    for (let i = 0; i < images.length; i += batchSize) {
+      const batch = Array.from(images).slice(i, i + batchSize);
       
-      // Wait for image to load
+      // Process batch
+      await Promise.all(batch.map(img => this.processImage(img)));
+      
+      // Small delay between batches to keep UI responsive
+      if (i + batchSize < images.length) {
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+    }
+  }
+
+  async processImage(img) {
+    img.dataset.spoilerChecked = "1";
+
+    try {
+      // Wait for image to load if not already loaded
       if (!img.complete) {
-        await new Promise(resolve => {
-          img.onload = resolve;
-          img.onerror = resolve;
-          setTimeout(resolve, 2000); // Timeout after 2s
-        });
+        await this.waitForImageLoad(img);
       }
 
-      // Skip tiny images (likely icons)
-      if (img.naturalWidth < 100 || img.naturalHeight < 100) continue;
+      // Skip tiny images (likely icons/UI elements)
+      if (img.naturalWidth < 120 || img.naturalHeight < 120) return;
+
+      // Skip if already processed
+      if (this.processedImages.has(img.src)) return;
+      this.processedImages.add(img.src);
 
       await this.analyzeAndBlurImage(img);
+      
+    } catch (error) {
+      console.warn("[Visual Shield] Error processing image:", error);
     }
+  }
+
+  waitForImageLoad(img, timeout = 4000) {
+    return new Promise((resolve) => {
+      if (img.complete) {
+        resolve();
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        img.removeEventListener('load', onLoad);
+        img.removeEventListener('error', onLoad);
+        resolve(); // Resolve anyway after timeout
+      }, timeout);
+
+      const onLoad = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+
+      img.addEventListener('load', onLoad, { once: true });
+      img.addEventListener('error', onLoad, { once: true });
+    });
   }
 
   async analyzeAndBlurImage(imgElement) {
     try {
       const analysis = await this.imageDetector.analyzeImage(imgElement, this.watchlist);
-      
+
       if (analysis.shouldBlur) {
-        console.log('[Visual Shield] Blurring image:', {
-          src: imgElement.src.substring(0, 50),
-          confidence: analysis.confidence,
+        console.log("[Visual Shield] Blurring image:", {
+          src: imgElement.src.substring(0, 60) + "...",
+          confidence: Math.round(analysis.confidence * 100) + "%",
           reason: analysis.reason,
-          type: analysis.type
+          type: analysis.type,
         });
 
         this.blurImage(imgElement, analysis);
       }
     } catch (error) {
-      console.error('[Visual Shield] Error analyzing image:', error);
+      console.error("[Visual Shield] Error analyzing image:", error);
     }
   }
 
   blurImage(imgElement, analysis) {
-    // Don't blur if already processed
-    if (imgElement.dataset.spoilerBlurred === '1') return;
-    
-    imgElement.dataset.spoilerBlurred = '1';
+    // Prevent double-processing
+    if (imgElement.dataset.spoilerBlurred === "1") return;
+    imgElement.dataset.spoilerBlurred = "1";
 
-    // Create wrapper for the image
-    const wrapper = document.createElement('div');
+    // Create wrapper
+    const wrapper = document.createElement("div");
     wrapper.style.cssText = `
       position: relative;
       display: inline-block;
       line-height: 0;
+      max-width: 100%;
     `;
 
-    // Insert wrapper
+    // Insert wrapper and move image into it
     imgElement.parentNode.insertBefore(wrapper, imgElement);
     wrapper.appendChild(imgElement);
 
-    // Apply blur effect
-    const blurIntensity = analysis.confidence > 0.7 ? '10px' : '6px';
+    // Apply blur with intensity based on confidence
+    const blurIntensity = analysis.confidence > 0.8 ? "15px" : 
+                         analysis.confidence > 0.6 ? "10px" : "8px";
+    
     imgElement.style.filter = `blur(${blurIntensity})`;
-    imgElement.style.transition = 'filter 0.3s ease';
-    imgElement.style.cursor = 'pointer';
+    imgElement.style.transition = "filter 0.3s ease";
+    imgElement.style.cursor = "pointer";
 
     // Create reveal overlay
-    const overlay = document.createElement('div');
+    const overlay = this.createRevealOverlay(analysis);
+    wrapper.appendChild(overlay);
+
+    // Set up reveal functionality
+    this.setupRevealHandlers(wrapper, imgElement, overlay, analysis);
+  }
+
+  createRevealOverlay(analysis) {
+    const overlay = document.createElement("div");
     overlay.style.cssText = `
       position: absolute;
       top: 0;
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(0, 0, 0, 0.8);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -416,139 +414,211 @@ class VisualSpoilerShield {
       transition: opacity 0.3s ease;
       cursor: pointer;
       z-index: 1000;
+      border-radius: 8px;
     `;
 
-    // Create reveal button
-    const revealButton = document.createElement('div');
+    const confidencePercent = Math.round(analysis.confidence * 100);
+    const detectionType = analysis.type === 'ml_analysis' ? '🤖' : '🔍';
+    
+    const revealButton = document.createElement("div");
     revealButton.innerHTML = `
       <div style="
-        background: white;
-        color: black;
-        padding: 12px 20px;
-        border-radius: 25px;
-        font-weight: bold;
-        font-size: 14px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        color: white;
+        padding: 14px 24px;
+        border-radius: 30px;
+        font-weight: 600;
+        font-size: 15px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.4);
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
+        backdrop-filter: blur(10px);
+        border: 2px solid rgba(255,255,255,0.2);
+        transform: scale(0.95);
+        transition: transform 0.2s ease;
       ">
-        👁️ Reveal Image
-        <div style="font-size: 11px; opacity: 0.7;">
-          ${Math.round(analysis.confidence * 100)}% confident
+        🛡️ Spoiler Detected
+        <div style="
+          font-size: 12px; 
+          opacity: 0.9;
+          background: rgba(255,255,255,0.2);
+          padding: 2px 8px;
+          border-radius: 12px;
+        ">
+          ${detectionType} ${confidencePercent}%
         </div>
       </div>
     `;
 
     overlay.appendChild(revealButton);
-    wrapper.appendChild(overlay);
+    return overlay;
+  }
 
-    // Show overlay on hover
-    wrapper.addEventListener('mouseenter', () => {
-      overlay.style.opacity = '1';
+  setupRevealHandlers(wrapper, imgElement, overlay, analysis) {
+    // Show overlay on hover with animation
+    wrapper.addEventListener("mouseenter", () => {
+      overlay.style.opacity = "1";
+      overlay.querySelector('div').style.transform = 'scale(1)';
     });
 
-    wrapper.addEventListener('mouseleave', () => {
-      overlay.style.opacity = '0';
+    wrapper.addEventListener("mouseleave", () => {
+      overlay.style.opacity = "0";
+      overlay.querySelector('div').style.transform = 'scale(0.95)';
     });
 
     // Reveal functionality
-    const revealImage = () => {
-      imgElement.style.filter = 'none';
-      overlay.remove();
+    const revealImage = (event) => {
+      event.stopPropagation();
+      event.preventDefault();
       
-      // Optional: show a brief "revealed" indicator
-      this.showRevealedIndicator(wrapper);
+      imgElement.style.filter = "none";
+      overlay.style.opacity = "0";
+      
+      // Remove overlay after transition
+      setTimeout(() => {
+        if (overlay.parentNode) {
+          overlay.remove();
+        }
+      }, 300);
+      
+      // Show brief success indicator
+      this.showRevealedIndicator(wrapper, analysis);
+      
+      // Log reveal for debugging
+      console.log("[Visual Shield] Image revealed:", {
+        reason: analysis.reason,
+        confidence: analysis.confidence,
+        type: analysis.type
+      });
     };
 
-    overlay.addEventListener('click', (e) => {
-      e.stopPropagation();
-      revealImage();
-    });
+    overlay.addEventListener("click", revealImage);
+    imgElement.addEventListener("click", revealImage);
 
-    imgElement.addEventListener('click', (e) => {
-      e.stopPropagation();
-      revealImage();
+    // Keyboard accessibility
+    wrapper.setAttribute('tabindex', '0');
+    wrapper.setAttribute('role', 'button');
+    wrapper.setAttribute('aria-label', `Spoiler detected with ${Math.round(analysis.confidence * 100)}% confidence. Press Enter or click to reveal.`);
+    
+    wrapper.addEventListener("keydown", (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        revealImage(event);
+      }
     });
   }
 
-  showRevealedIndicator(wrapper) {
-    const indicator = document.createElement('div');
-    indicator.textContent = '✓ Revealed';
+  showRevealedIndicator(wrapper, analysis) {
+    const indicator = document.createElement("div");
+    indicator.innerHTML = `
+      <div style="
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(34, 197, 94, 0.95);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 600;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.3);
+        box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+      ">
+        ✓ Revealed
+        <span style="font-size: 11px; opacity: 0.8;">${analysis.type}</span>
+      </div>
+    `;
+    
     indicator.style.cssText = `
       position: absolute;
-      top: 10px;
-      right: 10px;
-      background: rgba(0, 255, 0, 0.8);
-      color: white;
-      padding: 4px 8px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: bold;
+      top: 12px;
+      right: 12px;
       z-index: 1001;
       opacity: 1;
       transition: opacity 2s ease;
+      pointer-events: none;
     `;
 
     wrapper.appendChild(indicator);
 
-    // Fade out after 2 seconds
+    // Fade out and remove
     setTimeout(() => {
-      indicator.style.opacity = '0';
-      setTimeout(() => indicator.remove(), 2000);
-    }, 2000);
+      indicator.style.opacity = "0";
+      setTimeout(() => {
+        if (indicator.parentNode) {
+          indicator.remove();
+        }
+      }, 2000);
+    }, 2500);
   }
 
   setupImageObserver() {
-    // Observer for dynamically added images
     const observer = new MutationObserver((mutations) => {
-      mutations.forEach(mutation => {
-        mutation.addedNodes.forEach(node => {
+      const imagesToProcess = [];
+
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.ELEMENT_NODE) {
             // Check if the node itself is an image
-            if (node.tagName === 'IMG') {
-              setTimeout(() => this.analyzeAndBlurImage(node), 100);
+            if (node.tagName === "IMG" && node.src) {
+              imagesToProcess.push(node);
             }
-            
+
             // Check for images within the added node
-            const images = node.querySelectorAll ? node.querySelectorAll('img[src]') : [];
-            images.forEach(img => {
-              setTimeout(() => this.analyzeAndBlurImage(img), 100);
-            });
+            if (node.querySelectorAll) {
+              const images = node.querySelectorAll("img[src]");
+              imagesToProcess.push(...Array.from(images));
+            }
           }
         });
       });
+
+      // Process new images after a small delay
+      if (imagesToProcess.length > 0) {
+        setTimeout(() => {
+          imagesToProcess.forEach(img => this.processImage(img));
+        }, 250);
+      }
     });
 
     observer.observe(document.body, {
       childList: true,
-      subtree: true
+      subtree: true,
     });
+
+    console.log("[Visual Shield] Image observer set up");
   }
 
   setupLazyLoadObserver() {
-    // Observer for lazy-loaded images
     const lazyObserver = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting && entry.target.tagName === 'IMG') {
-          setTimeout(() => this.analyzeAndBlurImage(entry.target), 500);
+      entries.forEach((entry) => {
+        if (entry.isIntersecting && 
+            entry.target.tagName === "IMG" && 
+            !entry.target.dataset.spoilerChecked) {
+          // Small delay to ensure image has loaded
+          setTimeout(() => this.processImage(entry.target), 400);
         }
       });
+    }, {
+      rootMargin: "100px", // Start processing images 100px before they come into view
+      threshold: 0.1
     });
 
-    // Observe all images
-    document.querySelectorAll('img').forEach(img => {
+    // Observe existing images
+    document.querySelectorAll("img").forEach((img) => {
       lazyObserver.observe(img);
     });
 
     // Observe new images as they're added
     const newImageObserver = new MutationObserver((mutations) => {
-      mutations.forEach(mutation => {
-        mutation.addedNodes.forEach(node => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            const images = node.tagName === 'IMG' ? [node] : 
-                          (node.querySelectorAll ? Array.from(node.querySelectorAll('img')) : []);
-            images.forEach(img => lazyObserver.observe(img));
+            const images = node.tagName === "IMG" ? [node] : 
+                          node.querySelectorAll ? Array.from(node.querySelectorAll("img")) : [];
+            images.forEach((img) => lazyObserver.observe(img));
           }
         });
       });
@@ -556,10 +626,30 @@ class VisualSpoilerShield {
 
     newImageObserver.observe(document.body, {
       childList: true,
-      subtree: true
+      subtree: true,
     });
+
+    console.log("[Visual Shield] Lazy load observer set up");
   }
 }
 
 // Initialize the visual spoiler shield
-const visualShield = new VisualSpoilerShield();
+(async () => {
+  console.log('[Visual Shield] Starting initialization...');
+  
+  const visualShield = new VisualSpoilerShield();
+  
+  // Wait for DOM to be ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      visualShield.initialize();
+    });
+  } else {
+    visualShield.initialize();
+  }
+
+  // Also initialize after a short delay to catch any dynamically loaded content
+  setTimeout(() => {
+    visualShield.initialize();
+  }, 2000);
+})();
