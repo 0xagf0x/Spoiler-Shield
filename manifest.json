@@ -47,11 +47,14 @@
     }
   ],
   "web_accessible_resources": [
-  {
-    "resources": [
-      "lib/*.wasm"
-    ],
-    "matches": ["<all_urls>"]
-  }
-]
+    {
+      "resources": [
+        "lib/*.wasm",
+        "lib/*.js",
+        "tensorflow.min.js",
+        "coco-ssd.min.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

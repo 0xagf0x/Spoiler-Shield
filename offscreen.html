@@ -1,50 +1,17 @@
 <!DOCTYPE html>
 <html>
-<head><title>Offscreen</title></head>
+<head>
+  <title>Offscreen ML</title>
+  <meta charset="utf-8">
+</head>
 <body>
-<script>
-  const port = chrome.runtime.connect({ name: 'offscreen-port' });
-  console.log('[Offscreen] Connected to background');
-
-  const port = chrome.runtime.connect({ name: 'offscreen-port' });
-console.log("[Offscreen] Port connected to background");
-
-port.onMessage.addListener((message) => {
-  if (message.type === "ANALYZE_IMAGE") {
-    mlProcessor
-      .analyzeImageData(
-        message.imageData,
-        message.width,
-        message.height,
-        message.watchlistTerms
-      )
-      .then((result) => {
-        port.postMessage(result);
-      })
-      .catch((error) => {
-        console.error("[Offscreen] Message handling error:", error);
-        port.postMessage({
-          shouldBlur: false,
-          confidence: 0,
-          reason: "processing error",
-        });
-      });
-  }
-
-  if (message.type === "INIT_ML") {
-    mlProcessor
-      .initialize()
-      .then((success) => {
-        port.postMessage({ type: "ml_initialized", success });
-      })
-      .catch((error) => {
-        port.postMessage({ type: "ml_initialized", success: false, error: error.message });
-      });
-  }
-});
-
-port.postMessage({ type: "offscreen_ready" });
-
-</script>
+  <!-- Load TensorFlow first -->
+  <script src="tensorflow.min.js" onload="console.log('[Offscreen] TensorFlow loaded')" onerror="console.error('[Offscreen] Failed to load TensorFlow')"></script>
+  
+  <!-- Load COCO-SSD after TensorFlow -->
+  <script src="coco-ssd.min.js" onload="console.log('[Offscreen] COCO-SSD loaded')" onerror="console.error('[Offscreen] Failed to load COCO-SSD')"></script>
+  
+  <!-- Load our ML processor last -->
+  <script src="offscreen.js"></script>
 </body>
 </html>

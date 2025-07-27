@@ -1,11 +1,4 @@
 // Offscreen document for ML processing
-
-import * as tf from '@tensorflow/tfjs';
-import * as cocoSsd from '@tensorflow-models/coco-ssd';
-import '@tensorflow/tfjs-backend-wasm';
-
-
-
 console.log("[Offscreen] ML processor loaded");
 
 class MLProcessor {
@@ -27,7 +20,9 @@ class MLProcessor {
     try {
       console.log("[Offscreen] Initializing TensorFlow...");
 
-      // TensorFlow is loaded globally from script tags
+      // Wait for libraries to be available
+      await this.waitForLibraries();
+
       this.tf = window.tf;
       this.cocoSsd = window.cocoSsd;
 
@@ -35,43 +30,42 @@ class MLProcessor {
         throw new Error("TensorFlow libraries not loaded");
       }
 
-      // Optional but recommended: Set the WASM path explicitly
-      this.tf.setWasmPaths(chrome.runtime.getURL("lib/"));
+      console.log("[Offscreen] TensorFlow found:", !!this.tf);
+      console.log("[Offscreen] COCO-SSD found:", !!this.cocoSsd);
+      console.log("[Offscreen] TF version:", this.tf.version);
 
-      // Force WASM only — prevents TF from trying to use WebGL or CPU (which may eval)
-      this.tf.ENV.set("WEBGL_VERSION", 0);
-      this.tf.ENV.set("HAS_WEBGL", false);
-      this.tf.ENV.set("HAS_WEBGPU", false);
-
-      // Set up WASM backend
-      await this.tf.setBackend("wasm");
+      // Wait for TensorFlow to be ready
       await this.tf.ready();
-      console.log("[Offscreen] TensorFlow WASM backend ready");
+      console.log("[Offscreen] TensorFlow ready, backend:", this.tf.getBackend());
 
-      // Load COCO-SSD model
-      this.cocoSsdModel = await this.cocoSsd.load();
-      console.log("[Offscreen] COCO-SSD model loaded");
+      // Load COCO-SSD model (let it use default backend)
+      console.log("[Offscreen] Loading COCO-SSD model...");
+      this.cocoSsdModel = await this.cocoSsd.load({
+        base: 'lite_mobilenet_v2' // Use lighter model for better compatibility
+      });
+      console.log("[Offscreen] COCO-SSD model loaded successfully");
 
       this.isInitialized = true;
       return true;
     } catch (error) {
       console.error("[Offscreen] Initialization failed:", error);
-
-      // Try CPU fallback
-      try {
-        await this.tf.setBackend("wasm");
-        await this.tf.ready();
-        this.cocoSsdModel = await this.cocoSsd.load();
-        console.log("[Offscreen] CPU fallback successful");
-        this.isInitialized = true;
-        return true;
-      } catch (fallbackError) {
-        console.error("[Offscreen] CPU fallback failed:", fallbackError);
-        return false;
-      }
+      return false;
     } finally {
       this.isInitializing = false;
     }
+  }
+
+  async waitForLibraries() {
+    return new Promise((resolve) => {
+      const checkLibraries = () => {
+        if (window.tf && window.cocoSsd) {
+          resolve();
+        } else {
+          setTimeout(checkLibraries, 100);
+        }
+      };
+      checkLibraries();
+    });
   }
 
   async analyzeImageData(imageData, width, height, watchlistTerms) {
@@ -83,29 +77,53 @@ class MLProcessor {
     }
 
     try {
-      // Create canvas from image data
-      const canvas = new OffscreenCanvas(width, height);
-      const ctx = canvas.getContext("2d");
-      const imgData = new ImageData(
-        new Uint8ClampedArray(imageData),
-        width,
-        height
-      );
-      ctx.putImageData(imgData, 0, 0);
+      // Try to create tensor from image data
+      let tensor;
+      let predictions;
 
-      // Convert to tensor for TensorFlow
-      const tensor = this.tf.browser.fromPixels(canvas);
-
-      // Run object detection
-      const predictions = await this.cocoSsdModel.detect(canvas);
-
-      // Clean up tensor
-      tensor.dispose();
+      // Method 1: Try using ImageData directly
+      try {
+        const imgData = new ImageData(
+          new Uint8ClampedArray(imageData),
+          width,
+          height
+        );
+        
+        // Create canvas and draw image data
+        const canvas = new OffscreenCanvas(width, height);
+        const ctx = canvas.getContext("2d");
+        ctx.putImageData(imgData, 0, 0);
+        
+        // Run detection on canvas
+        predictions = await this.cocoSsdModel.detect(canvas);
+        
+      } catch (canvasError) {
+        console.warn("[Offscreen] Canvas method failed:", canvasError);
+        
+        // Method 2: Try creating tensor directly from pixel data
+        try {
+          tensor = this.tf.tensor3d(
+            new Uint8Array(imageData), 
+            [height, width, 4]
+          );
+          
+          // Convert RGBA to RGB and normalize
+          const rgbTensor = tensor.slice([0, 0, 0], [height, width, 3]);
+          tensor.dispose();
+          
+          predictions = await this.cocoSsdModel.detect(rgbTensor);
+          rgbTensor.dispose();
+          
+        } catch (tensorError) {
+          console.error("[Offscreen] Both methods failed:", tensorError);
+          return { shouldBlur: false, confidence: 0, reason: "image processing error" };
+        }
+      }
 
       // Analyze results
       const analysis = this.analyzeDetections(predictions, watchlistTerms);
-
       return analysis;
+
     } catch (error) {
       console.error("[Offscreen] Analysis error:", error);
       return { shouldBlur: false, confidence: 0, reason: "analysis error" };
@@ -116,8 +134,12 @@ class MLProcessor {
     let confidence = 0;
     let reasons = [];
 
+    console.log("[Offscreen] Analyzing", detections.length, "detections");
+
     for (const detection of detections) {
       if (detection.score < 0.3) continue;
+
+      console.log("[Offscreen] Detection:", detection.class, "score:", detection.score);
 
       // Check for people (often in spoiler content)
       if (detection.class === "person" && detection.score > 0.5) {
@@ -186,40 +208,43 @@ class MLProcessor {
 // Initialize processor
 const mlProcessor = new MLProcessor();
 
-// Listen for messages from content script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+// Set up port communication with background script
+const port = chrome.runtime.connect({ name: "offscreen-port" });
+
+port.onMessage.addListener(async (message) => {
+  console.log("[Offscreen] Received message:", message.type);
+
   if (message.type === "ANALYZE_IMAGE") {
-    mlProcessor
-      .analyzeImageData(
+    try {
+      const result = await mlProcessor.analyzeImageData(
         message.imageData,
         message.width,
         message.height,
         message.watchlistTerms
-      )
-      .then((result) => {
-        sendResponse(result);
-      })
-      .catch((error) => {
-        console.error("[Offscreen] Message handling error:", error);
-        sendResponse({
-          shouldBlur: false,
-          confidence: 0,
-          reason: "processing error",
-        });
+      );
+      port.postMessage(result);
+    } catch (error) {
+      console.error("[Offscreen] Analysis error:", error);
+      port.postMessage({
+        shouldBlur: false,
+        confidence: 0,
+        reason: "processing error",
       });
-    return true; // Keep message channel open for async response
+    }
   }
 
   if (message.type === "INIT_ML") {
-    mlProcessor
-      .initialize()
-      .then((success) => {
-        sendResponse({ success });
-      })
-      .catch((error) => {
-        sendResponse({ success: false, error: error.message });
-      });
-    return true;
+    try {
+      const success = await mlProcessor.initialize();
+      port.postMessage({ success });
+    } catch (error) {
+      console.error("[Offscreen] Init error:", error);
+      port.postMessage({ success: false, error: error.message });
+    }
   }
 });
 
+// Initialize ML when offscreen document loads
+mlProcessor.initialize().then(success => {
+  console.log("[Offscreen] Initial ML setup:", success ? "success" : "failed");
+});
