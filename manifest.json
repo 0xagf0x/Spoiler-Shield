@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Spoiler Shield",
-  "version": "0.1",
+  "version": "0.2",
   "description": "Block spoilers from Reddit, Twitter, and Facebook until you're ready.",
   "action": {
     "default_popup": "popup/popup.html",
@@ -44,17 +44,6 @@
       "js": [
         "content.js"
       ]
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "lib/*.wasm",
-        "lib/*.js",
-        "tensorflow.min.js",
-        "coco-ssd.min.js"
-      ],
-      "matches": ["<all_urls>"]
     }
   ]
 }
