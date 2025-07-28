@@ -64,7 +64,7 @@ function addToList(item) {
   itemText.className = 'item-text';
   
   const removeBtn = document.createElement('button');
-  removeBtn.textContent = '×';
+  removeBtn.textContent = 'x';
   removeBtn.className = 'remove-btn';
   removeBtn.title = 'Remove item';
   

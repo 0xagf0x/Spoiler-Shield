@@ -127,14 +127,14 @@ p {
 }
 
 .remove-btn {
-  background: rgba(239, 68, 68, 0.8);
+  background: transparent;
   color: white;
   border: none;
   border-radius: 50%;
   width: 24px;
   height: 24px;
   font-size: 16px;
-  font-weight: bold;
+  font-weight: normal;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
@@ -144,7 +144,7 @@ p {
 }
 
 .remove-btn:hover {
-  background: rgba(239, 68, 68, 1);
+  color: rgba(239, 68, 68, 1);
   transform: scale(1.1);
 }
 
