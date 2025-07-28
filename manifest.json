@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Spoiler Shield",
-  "version": "0.2",
-  "description": "Block spoilers from Reddit, Twitter, and Facebook until you're ready.",
+  "version": "1.1",
+  "description": "Block text-based spoilers from Reddit, Twitter, Facebook, and other sites until you're ready.",
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
@@ -15,8 +15,7 @@
   "permissions": [
     "scripting",
     "activeTab", 
-    "storage",
-    "offscreen"
+    "storage"
   ],
   "host_permissions": [
     "*://*.reddit.com/*",
@@ -25,7 +24,10 @@
     "*://*.facebook.com/*",
     "*://*.google.com/*",
     "*://*.youtube.com/*",
-    "*://*.instagram.com/*"
+    "*://*.instagram.com/*",
+    "*://*.tiktok.com/*",
+    "*://*.linkedin.com/*",
+    "*://*.discord.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -39,7 +41,10 @@
         "*://*.facebook.com/*",
         "*://*.google.com/*",
         "*://*.youtube.com/*",
-        "*://*.instagram.com/*"
+        "*://*.instagram.com/*",
+        "*://*.tiktok.com/*",
+        "*://*.linkedin.com/*",
+        "*://*.discord.com/*"
       ],
       "js": [
         "content.js"

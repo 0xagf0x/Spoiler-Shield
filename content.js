@@ -1,4 +1,4 @@
-// Spoiler Shield - Simple and Working Version
+// Spoiler Shield - Text Only Version (v1.1)
 console.log("[Spoiler Shield] Loading on", window.location.hostname);
 
 class SpoilerShield {
@@ -29,10 +29,29 @@ class SpoilerShield {
       // Set up observers for dynamic content
       this.setupObservers();
       
-      // Rescan every 3 seconds for dynamic content
-      setInterval(() => this.scanPage(), 3000);
+      // More aggressive scanning for dynamic sites
+      setInterval(() => this.scanPage(), 2000); // Every 2 seconds
       
-      console.log("[Spoiler Shield] Initialized and active");
+      // Scan on scroll events (for infinite scroll)
+      let scrollCount = 0;
+      const scrollHandler = () => {
+        scrollCount++;
+        // Scan every 3rd scroll event to balance performance
+        if (scrollCount % 3 === 0) {
+          setTimeout(() => this.scanPage(), 300);
+        }
+      };
+      
+      window.addEventListener('scroll', scrollHandler, { passive: true });
+      
+      // Scan when page becomes visible again (tab switching)
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          setTimeout(() => this.scanPage(), 500);
+        }
+      });
+      
+      console.log("[Spoiler Shield] Initialized and active (text-only mode)");
       
     } catch (error) {
       console.error("[Spoiler Shield] Initialization failed:", error);
@@ -43,41 +62,73 @@ class SpoilerShield {
     if (!this.isActive || this.watchlist.length === 0) return;
 
     try {
-      // Find all text content and images on the page
+      // Only scan text content - images disabled for v1.1
       this.scanTextContent();
-      this.scanImages();
     } catch (error) {
       console.error("[Spoiler Shield] Scan error:", error);
     }
   }
 
   scanTextContent() {
-    // Common selectors for different sites
+    // Enhanced selectors for different sites
     const selectors = [
       // Reddit
       '.Post', '[data-test-id="post-content"]', '.usertext-body', '.title', 'h3',
+      '.thing .title a', '.usertext .md p', '.live-timestamp-update',
+      '[data-subreddit]', '.entry .title', '.link .title',
+      '.scrollerItem', '.scrollable-content', // New Reddit infinite scroll
+      
       // Twitter/X  
       '[data-testid="tweet"]', '[data-testid="tweetText"]', 'article',
+      '[data-testid="User-Name"]', '.tweet-text', '.QuoteTweet-text',
+      '[data-testid="cellInnerDiv"]', // Twitter timeline items
+      
       // Facebook
-      '[data-testid="post_message"]', '.userContent',
-      // General
-      '.post', '.content', '.comment', '.story', 'p', '.description'
+      '[data-testid="post_message"]', '.userContent', '[role="article"]',
+      '._5pbx', '.story_body_container', '[data-pagelet]',
+      
+      // YouTube
+      '#video-title', '.ytd-video-meta-block', '#content-text', '.comment-text',
+      '.video-title', '.style-scope ytd-video-primary-info-renderer',
+      'ytd-rich-grid-media', 'ytd-video-renderer', // YouTube grid items
+      
+      // General news sites and content
+      'h1', 'h2', 'h3', '.headline', '.title', '.post-title',
+      '.article-title', '.entry-title', '.news-title',
+      'p', '.content', '.post-content', '.article-content',
+      '.comment', '.description', '.summary', '.excerpt',
+      '.story', '.news-item', '.feed-item',
+      
+      // Dynamic content containers
+      '[data-testid]', '.feed', '.timeline', '.stream',
+      '.infinite-scroll-component', '.virtualized-list'
     ];
 
     selectors.forEach(selector => {
-      const elements = document.querySelectorAll(selector);
-      elements.forEach(element => this.checkAndBlurElement(element));
-    });
-  }
-
-  scanImages() {
-    const images = document.querySelectorAll('img');
-    images.forEach(img => {
-      if (!img.dataset.spoilerChecked) {
-        img.dataset.spoilerChecked = 'true';
-        this.checkAndBlurImage(img);
+      try {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(element => {
+          this.checkAndBlurElement(element);
+          
+          // If we have intersection observer, also observe this element
+          if (this.setupIntersectionObserver && !this.processedElements.has(element)) {
+            this.setupIntersectionObserver.observe(element);
+          }
+        });
+      } catch (e) {
+        // Skip if selector fails
       }
     });
+
+    // Also do a broader scan for any element with substantial text content
+    const allElements = document.querySelectorAll('*');
+    const textElements = Array.from(allElements).filter(el => {
+      const text = el.textContent?.trim() || '';
+      return text.length > 10 && text.length < 1000 && // Reasonable text length
+             el.children.length === 0; // No child elements (likely a text node)
+    });
+
+    textElements.forEach(el => this.checkAndBlurElement(el));
   }
 
   checkAndBlurElement(element) {
@@ -89,7 +140,9 @@ class SpoilerShield {
     // Check if any watchlist term appears in the text
     const foundTerm = this.watchlist.find(term => {
       const termLower = term.toLowerCase();
-      return text.includes(termLower);
+      // More flexible matching - check for partial matches and common variations
+      return text.includes(termLower) || 
+             this.fuzzyMatch(text, termLower);
     });
 
     if (foundTerm) {
@@ -99,63 +152,100 @@ class SpoilerShield {
     }
   }
 
-  checkAndBlurImage(img) {
-    if (!img.src || this.processedElements.has(img)) return;
-
-    // Get context around the image
-    const context = this.getImageContext(img);
-    const allText = `${img.src} ${img.alt || ''} ${img.title || ''} ${context}`.toLowerCase();
-
-    // Check if any watchlist term appears
-    const foundTerm = this.watchlist.find(term => {
-      const termLower = term.toLowerCase();
-      return allText.includes(termLower);
-    });
-
-    if (foundTerm) {
-      console.log(`[Spoiler Shield] Found "${foundTerm}" near image, blurring`);
-      this.blurImage(img, foundTerm);
-      this.processedElements.add(img);
-    }
+  fuzzyMatch(text, term) {
+    // Handle common variations and partial matches
+    const variations = this.generateVariations(term);
+    return variations.some(variation => text.includes(variation));
   }
 
-  getImageContext(img) {
-    try {
-      // Get text from parent containers
-      let parent = img.parentElement;
-      let context = '';
-      let levels = 0;
-
-      while (parent && levels < 3) {
-        const text = parent.textContent || '';
-        if (text.length > context.length && text.length < 1000) {
-          context = text;
-        }
-        parent = parent.parentElement;
-        levels++;
-      }
-
-      return context;
-    } catch (error) {
-      return '';
+  generateVariations(term) {
+    const variations = [term];
+    
+    // Add common variations
+    variations.push(`${term}s`); // plural
+    variations.push(term.replace(/\s+/g, '')); // no spaces
+    variations.push(term.replace(/\s+/g, '_')); // underscores
+    variations.push(term.replace(/\s+/g, '-')); // hyphens
+    
+    // For multi-word terms, add individual words
+    if (term.includes(' ')) {
+      const words = term.split(' ');
+      variations.push(...words.filter(word => word.length > 2));
     }
+    
+    return variations;
   }
 
   blurElement(element, term) {
     if (element.dataset.spoilerBlurred) return;
     element.dataset.spoilerBlurred = 'true';
 
-    // Apply blur effect
-    element.style.filter = 'blur(32px) brightness(20%)';
+    // Store original styles
+    const originalFilter = element.style.filter || '';
+    const originalTransition = element.style.transition || '';
+    const originalCursor = element.style.cursor || '';
+
+    // Apply blur effect with improved styling
+    element.style.filter = 'blur(8px) brightness(30%)';
     element.style.transition = 'filter 0.3s ease';
     element.style.cursor = 'pointer';
     element.style.position = 'relative';
+    element.style.userSelect = 'none';
 
-    // Add click handler to reveal
+    // Add subtle border to indicate it's interactive
+    const originalBoxShadow = element.style.boxShadow || '';
+    element.style.boxShadow = '0 0 0 2px rgba(99, 102, 241, 0.3)';
+
+    // Create overlay with better styling
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    `;
+    overlay.innerHTML = `🛡️ Spoiler Hidden`;
+
+    element.appendChild(overlay);
+
+    // Show overlay on hover
+    element.addEventListener('mouseenter', () => {
+      overlay.style.opacity = '1';
+      element.style.filter = 'blur(6px) brightness(40%)';
+    });
+
+    element.addEventListener('mouseleave', () => {
+      if (element.dataset.spoilerBlurred === 'true') {
+        overlay.style.opacity = '0';
+        element.style.filter = 'blur(8px) brightness(30%)';
+      }
+    });
+
+    // Click handler to reveal
     const revealHandler = (e) => {
       e.stopPropagation();
-      element.style.filter = 'none';
-      element.style.cursor = 'default';
+      
+      // Remove blur and restore original styles
+      element.style.filter = originalFilter;
+      element.style.cursor = originalCursor;
+      element.style.boxShadow = originalBoxShadow;
+      element.style.userSelect = '';
+      element.dataset.spoilerBlurred = 'false';
+      
+      // Remove overlay
+      overlay.remove();
       
       // Show brief notification
       this.showRevealNotification(element, term);
@@ -166,110 +256,28 @@ class SpoilerShield {
 
     element.addEventListener('click', revealHandler);
 
-    // Add hover effect
-    element.addEventListener('mouseenter', () => {
-      if (element.style.filter === 'blur(8px)') {
-        element.style.filter = 'blur(4px)';
-      }
-    });
-
-    element.addEventListener('mouseleave', () => {
-      if (element.style.filter === 'blur(4px)') {
-        element.style.filter = 'blur(8px)';
-      }
-    });
-
     console.log(`[Spoiler Shield] Blurred element containing: ${term}`);
-  }
-
-  blurImage(img, term) {
-    if (img.dataset.spoilerBlurred) return;
-    img.dataset.spoilerBlurred = 'true';
-
-    // Create wrapper
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = `
-      position: relative;
-      display: inline-block;
-      max-width: 100%;
-    `;
-
-    // Insert wrapper and move image
-    img.parentNode.insertBefore(wrapper, img);
-    wrapper.appendChild(img);
-
-    // Apply blur
-    img.style.filter = 'blur(15px)';
-    img.style.transition = 'filter 0.3s ease';
-    img.style.cursor = 'pointer';
-
-    // Create overlay
-    const overlay = document.createElement('div');
-    overlay.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    `;
-    overlay.innerHTML = `<div style="background: #6366f1; padding: 10px 20px; border-radius: 20px;">Spoiler Blocked</div>`;
-
-    wrapper.appendChild(overlay);
-
-    // Show overlay on hover
-    wrapper.addEventListener('mouseenter', () => {
-      overlay.style.opacity = '1';
-    });
-
-    wrapper.addEventListener('mouseleave', () => {
-      overlay.style.opacity = '0';
-    });
-
-    // Click to reveal
-    const revealHandler = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      
-      img.style.filter = 'none';
-      overlay.style.opacity = '0';
-      
-      setTimeout(() => overlay.remove(), 300);
-      
-      this.showRevealNotification(wrapper, term);
-    };
-
-    overlay.addEventListener('click', revealHandler);
-    img.addEventListener('click', revealHandler);
-
-    console.log(`[Spoiler Shield] Blurred image for: ${term}`);
   }
 
   showRevealNotification(element, term) {
     const notification = document.createElement('div');
     notification.style.cssText = `
       position: absolute;
-      top: 10px;
-      right: 10px;
-      background: #10b981;
+      top: -5px;
+      right: -5px;
+      background: linear-gradient(135deg, #10b981, #059669);
       color: white;
-      padding: 5px 10px;
+      padding: 6px 12px;
       border-radius: 15px;
-      font-size: 12px;
-      font-weight: bold;
+      font-size: 11px;
+      font-weight: 600;
       z-index: 10000;
       opacity: 1;
       transition: opacity 2s ease;
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+      white-space: nowrap;
     `;
-    notification.textContent = `✓ Revealed (${term})`;
+    notification.textContent = `✓ Revealed`;
 
     element.style.position = 'relative';
     element.appendChild(notification);
@@ -277,34 +285,90 @@ class SpoilerShield {
     // Fade out and remove
     setTimeout(() => {
       notification.style.opacity = '0';
-      setTimeout(() => notification.remove(), 2000);
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.remove();
+        }
+      }, 2000);
     }, 2000);
   }
 
   setupObservers() {
-    // Watch for new content being added
+    // Watch for new content being added (more aggressive for dynamic sites)
     const observer = new MutationObserver((mutations) => {
-      let hasNewContent = false;
+      let shouldScan = false;
       
       mutations.forEach((mutation) => {
         if (mutation.addedNodes.length > 0) {
-          hasNewContent = true;
+          mutation.addedNodes.forEach(node => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              // Immediately scan new elements that might contain text
+              if (node.textContent && node.textContent.trim().length > 2) {
+                this.checkAndBlurElement(node);
+                // Also scan child elements
+                this.scanElementAndChildren(node);
+              }
+              shouldScan = true;
+            }
+          });
         }
       });
 
-      if (hasNewContent) {
-        // Debounce scanning to avoid too frequent scans
-        clearTimeout(this.scanTimeout);
-        this.scanTimeout = setTimeout(() => this.scanPage(), 500);
+      if (shouldScan) {
+        // Much more aggressive scanning for dynamic content
+        clearTimeout(this.quickScanTimeout);
+        this.quickScanTimeout = setTimeout(() => this.scanPage(), 100);
       }
     });
 
     observer.observe(document.body, {
       childList: true,
-      subtree: true
+      subtree: true,
+      attributes: false, // Don't watch attribute changes to reduce noise
+      characterData: false // Don't watch text changes to reduce noise
     });
 
-    console.log("[Spoiler Shield] Observer set up for dynamic content");
+    // Also set up scroll-based scanning for infinite scroll sites
+    let scrollTimeout;
+    window.addEventListener('scroll', () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        this.scanPage();
+      }, 200);
+    });
+
+    // Set up intersection observer to catch elements entering viewport
+    if ('IntersectionObserver' in window) {
+      const intersectionObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting && !this.processedElements.has(entry.target)) {
+            this.checkAndBlurElement(entry.target);
+          }
+        });
+      }, {
+        rootMargin: '50px' // Start checking elements 50px before they enter viewport
+      });
+
+      // Observe all potential content elements
+      this.setupIntersectionObserver = intersectionObserver;
+    }
+
+    console.log("[Spoiler Shield] Enhanced observers set up for dynamic content");
+  }
+
+  scanElementAndChildren(element) {
+    // Scan an element and all its children immediately
+    if (element && element.nodeType === Node.ELEMENT_NODE) {
+      this.checkAndBlurElement(element);
+      
+      // Scan all child elements
+      const children = element.querySelectorAll('*');
+      children.forEach(child => {
+        if (child.textContent && child.textContent.trim().length > 2) {
+          this.checkAndBlurElement(child);
+        }
+      });
+    }
   }
 
   // Handle messages from popup
@@ -319,12 +383,30 @@ class SpoilerShield {
         setTimeout(() => this.scanPage(), 100);
       } else {
         this.isActive = false;
+        // Remove all existing blurs when watchlist is empty
+        this.removeAllBlurs();
       }
     } else if (message.action === 'rescan') {
       this.processedElements.clear();
       this.scanPage();
       console.log("[Spoiler Shield] Manual rescan completed");
     }
+  }
+
+  removeAllBlurs() {
+    // Remove all existing blurs when extension is disabled
+    const blurredElements = document.querySelectorAll('[data-spoiler-blurred="true"]');
+    blurredElements.forEach(element => {
+      element.style.filter = '';
+      element.style.cursor = '';
+      element.style.boxShadow = '';
+      element.style.userSelect = '';
+      element.dataset.spoilerBlurred = 'false';
+      
+      // Remove any overlays
+      const overlays = element.querySelectorAll('div[style*="spoiler"]');
+      overlays.forEach(overlay => overlay.remove());
+    });
   }
 }
 
@@ -350,4 +432,4 @@ setTimeout(() => {
   spoilerShield.initialize();
 }, 1000);
 
-console.log("[Spoiler Shield] Content script loaded and ready");
+console.log("[Spoiler Shield] Content script loaded and ready (v1.1 - Text Only)");
