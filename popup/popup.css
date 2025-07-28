@@ -1,26 +1,4 @@
-/* body {
-  font-family: Arial, sans-serif;
-  padding: 10px;
-  width: 300px;
-}
-
-input {
-  width: 70%;
-  padding: 5px;
-  margin-bottom: 10px;
-}
-
-button {
-  padding: 5px 10px;
-}
-
-ul {
-  list-style: none;
-  padding: 0;
-} */
-
-
-/* popup/popup.css */
+/* popup/popup.css - Complete version */
 body {
   width: 320px;
   min-height: 400px;
@@ -47,4 +25,253 @@ h1 {
 }
 
 p {
-  margin: 0
+  margin: 0 0 15px 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+/* Input and button styles */
+#input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 14px;
+  box-sizing: border-box;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+#input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+#input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.25);
+}
+
+#addBtn {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 20px;
+}
+
+#addBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+#addBtn:active {
+  transform: translateY(0);
+}
+
+/* Watchlist styles */
+#watchlist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+#watchlist::-webkit-scrollbar {
+  width: 6px;
+}
+
+#watchlist::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+#watchlist::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.watchlist-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.2s ease;
+}
+
+.watchlist-item:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateX(2px);
+}
+
+.item-text {
+  font-size: 14px;
+  font-weight: 500;
+  flex-grow: 1;
+  word-break: break-word;
+}
+
+.remove-btn {
+  background: rgba(239, 68, 68, 0.8);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 10px;
+}
+
+.remove-btn:hover {
+  background: rgba(239, 68, 68, 1);
+  transform: scale(1.1);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 20px;
+  font-size: 13px;
+  opacity: 0.7;
+  font-style: italic;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+}
+
+/* Quick suggestions styles */
+.quick-suggestions {
+  margin-bottom: 20px;
+}
+
+.quick-suggestions p {
+  margin: 10px 0 8px 0;
+  font-size: 12px;
+  opacity: 0.8;
+  font-weight: 500;
+}
+
+.quick-suggestions div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 15px;
+}
+
+.quick-suggestions button {
+  padding: 6px 10px;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.quick-suggestions button:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Rescan button styles */
+button[style*="width: 100%"] {
+  width: 100% !important;
+  padding: 10px !important;
+  margin-top: 15px !important;
+  background: rgba(255, 255, 255, 0.2) !important;
+  border: none !important;
+  border-radius: 8px !important;
+  color: white !important;
+  cursor: pointer !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+button[style*="width: 100%"]:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Toast notification styles */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  z-index: 10000;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+  opacity: 0;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Status indicator */
+.status-indicator {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+  animation: pulse 2s infinite;
+}
+
+.status-indicator.inactive {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Responsive adjustments */
+@media (max-height: 500px) {
+  #watchlist {
+    max-height: 150px;
+  }
+  
+  body {
+    min-height: 350px;
+  }
+}
