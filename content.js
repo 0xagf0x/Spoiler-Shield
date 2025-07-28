@@ -1,13 +1,20 @@
-// Spoiler Shield - Fixed Version (v1.2)
+// Spoiler Shield - Ultra-Robust Reveal Button Version (v1.4)
 console.log("[Spoiler Shield] Loading on", window.location.hostname);
+
+// Prevent multiple initializations
+if (window.spoilerShieldLoaded) {
+  console.log("[Spoiler Shield] Already loaded, skipping");
+} else {
+  window.spoilerShieldLoaded = true;
 
 class SpoilerShield {
   constructor() {
     this.watchlist = [];
-    this.processedElements = new WeakSet(); // Use WeakSet for better memory management
+    this.processedElements = new WeakSet();
     this.isActive = false;
     this.observers = [];
     this.scanTimeout = null;
+    this.overlayCounter = 0;
   }
 
   async initialize() {
@@ -25,23 +32,157 @@ class SpoilerShield {
 
       this.isActive = true;
       
+      // Inject CSS for better overlay styling
+      this.injectOverlayCSS();
+      
       // Start scanning immediately
       this.scanPage();
       
       // Set up observers for dynamic content
       this.setupObservers();
       
-      console.log("[Spoiler Shield] Initialized and active (v1.2)");
+      console.log("[Spoiler Shield] Initialized and active (v1.4)");
       
     } catch (error) {
       console.error("[Spoiler Shield] Initialization failed:", error);
     }
   }
 
+  injectOverlayCSS() {
+    // Remove existing styles first
+    const existingStyle = document.getElementById('spoiler-shield-styles');
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+    
+    const style = document.createElement('style');
+    style.id = 'spoiler-shield-styles';
+    style.textContent = `
+      /* Force styles with maximum specificity */
+      .spoiler-shield-wrapper {
+        position: relative !important;
+        display: block !important;
+        isolation: isolate !important;
+      }
+      
+      .spoiler-shield-overlay {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        z-index: 2147483647 !important;
+        pointer-events: auto !important;
+        background: rgba(20, 20, 20, 0.8) !important;
+        backdrop-filter: blur(3px) !important;
+        min-height: 80px !important;
+        min-width: 120px !important;
+        box-sizing: border-box !important;
+      }
+      
+      .spoiler-shield-button {
+        all: initial !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif !important;
+        background: linear-gradient(135deg, #ff6b6b, #ee5a24) !important;
+        color: #ffffff !important;
+        border: 3px solid #ffffff !important;
+        padding: 14px 24px !important;
+        border-radius: 30px !important;
+        font-size: 16px !important;
+        font-weight: 700 !important;
+        cursor: pointer !important;
+        z-index: 2147483647 !important;
+        pointer-events: auto !important;
+        box-shadow: 0 6px 20px rgba(255, 107, 107, 0.5), 0 0 0 2px rgba(255, 255, 255, 0.3) !important;
+        transition: all 0.3s ease !important;
+        white-space: nowrap !important;
+        line-height: 1.2 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        text-align: center !important;
+        text-decoration: none !important;
+        text-transform: none !important;
+        letter-spacing: 0.5px !important;
+        position: relative !important;
+        outline: none !important;
+        user-select: none !important;
+        -webkit-user-select: none !important;
+        -moz-user-select: none !important;
+        -ms-user-select: none !important;
+        max-width: none !important;
+        min-width: 160px !important;
+        height: auto !important;
+        margin: 0 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        transform: none !important;
+      }
+      
+      .spoiler-shield-button:hover {
+        background: linear-gradient(135deg, #ff5252, #d63031) !important;
+        transform: scale(1.1) translateY(-2px) !important;
+        box-shadow: 0 8px 25px rgba(255, 107, 107, 0.7), 0 0 0 3px rgba(255, 255, 255, 0.5) !important;
+        border-color: #ffffff !important;
+      }
+      
+      .spoiler-shield-button:active {
+        transform: scale(1.05) translateY(-1px) !important;
+        box-shadow: 0 4px 15px rgba(255, 107, 107, 0.8) !important;
+      }
+      
+      .spoiler-shield-blurred {
+        filter: blur(12px) brightness(30%) contrast(70%) !important;
+        transition: filter 0.4s ease !important;
+        user-select: none !important;
+        -webkit-user-select: none !important;
+        pointer-events: none !important;
+      }
+      
+      .spoiler-shield-notification {
+        position: absolute !important;
+        top: 15px !important;
+        right: 15px !important;
+        background: linear-gradient(135deg, #00b894, #00a085) !important;
+        color: white !important;
+        padding: 8px 16px !important;
+        border-radius: 20px !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        z-index: 2147483647 !important;
+        opacity: 1 !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 12px rgba(0, 184, 148, 0.4) !important;
+        white-space: nowrap !important;
+        pointer-events: none !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif !important;
+      }
+
+      /* Additional fallback styles for stubborn elements */
+      [data-spoiler-blurred="true"] .spoiler-shield-overlay {
+        display: flex !important;
+        position: absolute !important;
+        z-index: 2147483647 !important;
+      }
+
+      [data-spoiler-blurred="true"] .spoiler-shield-button {
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+    `;
+    document.head.appendChild(style);
+    console.log("[Spoiler Shield] CSS injected successfully");
+  }
+
   scanPage() {
     if (!this.isActive || this.watchlist.length === 0) return;
 
-    // Clear any pending scan
     if (this.scanTimeout) {
       clearTimeout(this.scanTimeout);
     }
@@ -52,11 +193,10 @@ class SpoilerShield {
       } catch (error) {
         console.error("[Spoiler Shield] Scan error:", error);
       }
-    }, 50); // Small delay to batch rapid scans
+    }, 100);
   }
 
   scanTextContent() {
-    // Site-specific selectors for better targeting
     const siteSelectors = this.getSiteSpecificSelectors();
     
     siteSelectors.forEach(selector => {
@@ -68,7 +208,6 @@ class SpoilerShield {
           }
         });
       } catch (e) {
-        // Skip if selector fails
         console.warn("[Spoiler Shield] Failed selector:", selector, e.message);
       }
     });
@@ -79,7 +218,6 @@ class SpoilerShield {
     
     if (hostname.includes('reddit.com')) {
       return [
-        // Reddit post containers
         '[data-testid="post-container"]',
         '.Post',
         '[data-click="thing"]',
@@ -87,7 +225,6 @@ class SpoilerShield {
         '.scrollerItem',
         'shreddit-post',
         '[slot="full-post-container"]',
-        // Reddit comments
         '.Comment',
         '.commentarea .comment',
         '[data-testid="comment"]'
@@ -96,99 +233,53 @@ class SpoilerShield {
     
     if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
       return [
-        // Twitter/X tweet containers
         '[data-testid="tweet"]',
         'article[data-testid="tweet"]',
         '[data-testid="cellInnerDiv"] article',
-        '.tweet',
-        // Twitter timeline items
-        '[data-testid="primaryColumn"] section > div > div'
+        '.tweet'
       ];
     }
     
     if (hostname.includes('facebook.com')) {
       return [
-        // Facebook post containers
         '[data-pagelet="FeedUnit"]',
         '[role="article"]',
-        '.userContentWrapper',
-        '[data-testid="story-subtitle"]',
-        '.story_body_container'
+        '.userContentWrapper'
       ];
     }
     
-    if (hostname.includes('youtube.com')) {
-      return [
-        // YouTube video items
-        'ytd-video-renderer',
-        'ytd-rich-item-renderer',
-        'ytd-grid-video-renderer',
-        'ytd-compact-video-renderer',
-        // YouTube comments
-        'ytd-comment-renderer',
-        '#content-text'
-      ];
-    }
-    
-    if (hostname.includes('instagram.com')) {
-      return [
-        // Instagram post containers
-        'article',
-        '[role="button"] article',
-        '._aamj', // Instagram post class
-        '._ab6-' // Instagram story class
-      ];
-    }
-    
-    // Default selectors for other sites
+    // Default selectors for testing and other sites
     return [
-      // General content containers
       'article',
       '.post',
-      '.tweet',
-      '.story',
-      '.news-item',
-      '.feed-item',
-      '.content-item',
-      // Headings and text content
+      '.content',
       'h1', 'h2', 'h3',
       '.title',
       '.headline',
-      '.post-title',
-      // Paragraphs in content areas
-      '.content p',
-      '.post-content p',
-      '.article-content p',
-      '.description'
+      'p'
     ];
   }
 
   checkAndBlurElement(element) {
     if (!element || this.processedElements.has(element)) return;
     
-    // Mark as processed immediately to prevent duplicate processing
     this.processedElements.add(element);
     
     const text = this.extractTextContent(element);
-    if (text.length < 3) return; // Skip very short text
+    if (text.length < 3) return;
     
-    // Check if any watchlist term appears in the text
     const foundTerm = this.findMatchingTerm(text);
 
     if (foundTerm) {
-      console.log(`[Spoiler Shield] Found "${foundTerm}" in text, blurring element`);
+      console.log(`[Spoiler Shield] Found "${foundTerm}" in text:`, text.substring(0, 100));
       this.blurElement(element, foundTerm);
     }
   }
 
   extractTextContent(element) {
-    // Get text content but exclude certain elements
     const clone = element.cloneNode(true);
-    
-    // Remove script and style elements
-    const scriptsAndStyles = clone.querySelectorAll('script, style');
+    const scriptsAndStyles = clone.querySelectorAll('script, style, .spoiler-shield-overlay');
     scriptsAndStyles.forEach(el => el.remove());
-    
     return (clone.textContent || '').toLowerCase().trim();
   }
 
@@ -196,289 +287,243 @@ class SpoilerShield {
     return this.watchlist.find(term => {
       const termLower = term.toLowerCase().trim();
       if (!termLower) return false;
-      
-      // Exact match
-      if (text.includes(termLower)) return true;
-      
-      // Fuzzy matching for variations
-      return this.fuzzyMatch(text, termLower);
+      return text.includes(termLower) || this.fuzzyMatch(text, termLower);
     });
   }
 
   fuzzyMatch(text, term) {
-    const variations = this.generateVariations(term);
-    return variations.some(variation => text.includes(variation));
-  }
-
-  generateVariations(term) {
-    const variations = [term];
+    const variations = [
+      term,
+      `${term}s`,
+      term.replace(/\s+/g, ''),
+      term.replace(/\s+/g, '_'),
+      term.replace(/\s+/g, '-')
+    ];
     
-    // Add common variations
-    variations.push(`${term}s`); // plural
-    variations.push(term.replace(/\s+/g, '')); // no spaces
-    variations.push(term.replace(/\s+/g, '_')); // underscores
-    variations.push(term.replace(/\s+/g, '-')); // hyphens
-    
-    // For multi-word terms, add individual words if they're significant
     if (term.includes(' ')) {
       const words = term.split(' ').filter(word => word.length > 2);
       variations.push(...words);
     }
     
-    return variations;
+    return variations.some(variation => text.includes(variation));
   }
 
   blurElement(element, term) {
-    if (element.dataset.spoilerBlurred) return;
+    if (element.dataset.spoilerBlurred) {
+      console.log("[Spoiler Shield] Element already blurred, skipping");
+      return;
+    }
     
-    // Store original styles and state
-    const originalStyles = {
-      filter: element.style.filter || '',
-      transition: element.style.transition || '',
-      cursor: element.style.cursor || '',
-      position: element.style.position || '',
-      zIndex: element.style.zIndex || '',
-      userSelect: element.style.userSelect || ''
-    };
+    this.overlayCounter++;
+    const overlayId = `spoiler-overlay-${this.overlayCounter}`;
     
+    console.log(`[Spoiler Shield] Blurring element for term: ${term}`);
+    
+    // Mark element
     element.dataset.spoilerBlurred = 'true';
     element.dataset.spoilerTerm = term;
+    element.dataset.overlayId = overlayId;
 
-    // Apply blur effect
-    element.style.filter = 'blur(8px) brightness(30%)';
-    element.style.transition = 'filter 0.3s ease';
-    element.style.cursor = 'pointer';
-    element.style.userSelect = 'none';
+    // Add wrapper class for positioning
+    element.classList.add('spoiler-shield-wrapper');
     
-    // Ensure element has relative positioning for overlay
-    if (!element.style.position || element.style.position === 'static') {
+    // Store original styles
+    const originalStyles = {
+      position: element.style.position,
+      zIndex: element.style.zIndex,
+      overflow: element.style.overflow
+    };
+
+    // Ensure proper positioning
+    const computedStyle = window.getComputedStyle(element);
+    if (computedStyle.position === 'static') {
       element.style.position = 'relative';
     }
+    
+    // Prevent content from overflowing and hiding the button
+    element.style.overflow = 'visible';
 
-    // Create overlay container that sits above the blur
+    // Apply blur effect
+    element.classList.add('spoiler-shield-blurred');
+
+    // Create overlay with maximum visibility
     const overlayContainer = document.createElement('div');
     overlayContainer.className = 'spoiler-shield-overlay';
+    overlayContainer.id = overlayId;
+    
+    // Force display properties
     overlayContainer.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 999999 !important;
-      pointer-events: auto;
-      background: rgba(0, 0, 0, 0.1);
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      z-index: 2147483647 !important;
+      background: rgba(20, 20, 20, 0.8) !important;
+      backdrop-filter: blur(3px) !important;
+      pointer-events: auto !important;
+      min-height: 80px !important;
+      min-width: 120px !important;
     `;
 
-    // Create the reveal button
+    // Create ultra-visible button
     const revealButton = document.createElement('button');
+    revealButton.className = 'spoiler-shield-button';
+    revealButton.type = 'button';
+    revealButton.innerHTML = `🚫 SHOW SPOILER 🚫`;
+    revealButton.title = `Spoiler detected: "${term}" - Click to reveal`;
+    
+    // Force button visibility
     revealButton.style.cssText = `
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      color: white;
-      border: none;
-      padding: 12px 24px;
-      border-radius: 25px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      z-index: 1000000 !important;
-      pointer-events: auto;
-      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
-      transition: all 0.2s ease;
-      white-space: nowrap;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      all: initial !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif !important;
+      background: linear-gradient(135deg, #ff6b6b, #ee5a24) !important;
+      color: #ffffff !important;
+      border: 3px solid #ffffff !important;
+      padding: 14px 24px !important;
+      border-radius: 30px !important;
+      font-size: 16px !important;
+      font-weight: 700 !important;
+      cursor: pointer !important;
+      z-index: 2147483647 !important;
+      pointer-events: auto !important;
+      box-shadow: 0 6px 20px rgba(255, 107, 107, 0.5) !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      white-space: nowrap !important;
+      line-height: 1.2 !important;
+      text-align: center !important;
+      min-width: 160px !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+      position: relative !important;
+      margin: 0 !important;
+      outline: none !important;
     `;
-    
-    revealButton.innerHTML = `🛡️ Show Spoiler`;
-    
-    // Add hover effects
-    revealButton.addEventListener('mouseenter', () => {
-      revealButton.style.transform = 'scale(1.05)';
-      revealButton.style.boxShadow = '0 6px 20px rgba(99, 102, 241, 0.6)';
-    });
-    
-    revealButton.addEventListener('mouseleave', () => {
-      revealButton.style.transform = 'scale(1)';
-      revealButton.style.boxShadow = '0 4px 15px rgba(99, 102, 241, 0.4)';
-    });
 
-    // Click handler to reveal THIS specific element only
+    // Click handler
     const revealHandler = (e) => {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
       
+      console.log(`[Spoiler Shield] Revealing spoiler: ${term}`);
+      
+      // Remove all spoiler effects
+      element.classList.remove('spoiler-shield-blurred', 'spoiler-shield-wrapper');
+      
       // Restore original styles
       Object.keys(originalStyles).forEach(prop => {
-        element.style[prop] = originalStyles[prop];
+        if (originalStyles[prop]) {
+          element.style[prop] = originalStyles[prop];
+        }
       });
       
-      // Remove spoiler data attributes
+      // Clean up data attributes
       delete element.dataset.spoilerBlurred;
       delete element.dataset.spoilerTerm;
+      delete element.dataset.overlayId;
       
       // Remove overlay
       overlayContainer.remove();
       
-      // Show brief success notification
+      // Show notification
       this.showRevealNotification(element, term);
-      
-      console.log(`[Spoiler Shield] Revealed spoiler: ${term}`);
     };
 
-    revealButton.addEventListener('click', revealHandler);
-    
-    // Also allow clicking the overlay background to reveal
+    // Add multiple event listeners for reliability
+    revealButton.addEventListener('click', revealHandler, { once: true });
+    revealButton.addEventListener('touchstart', revealHandler, { once: true });
     overlayContainer.addEventListener('click', (e) => {
       if (e.target === overlayContainer) {
         revealHandler(e);
       }
     });
 
-    // Assemble the overlay
+    // Assemble and insert
     overlayContainer.appendChild(revealButton);
     element.appendChild(overlayContainer);
 
-    console.log(`[Spoiler Shield] Blurred element containing: ${term}`);
+    // Force a reflow to ensure visibility
+    element.offsetHeight;
+    overlayContainer.offsetHeight;
+    revealButton.offsetHeight;
+
+    console.log(`[Spoiler Shield] Successfully created overlay with ID: ${overlayId}`);
+    console.log("[Spoiler Shield] Button element:", revealButton);
+    console.log("[Spoiler Shield] Overlay element:", overlayContainer);
   }
 
   showRevealNotification(element, term) {
     const notification = document.createElement('div');
-    notification.style.cssText = `
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: linear-gradient(135deg, #10b981, #059669);
-      color: white;
-      padding: 6px 12px;
-      border-radius: 15px;
-      font-size: 12px;
-      font-weight: 600;
-      z-index: 1000000;
-      opacity: 1;
-      transition: all 0.3s ease;
-      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-      white-space: nowrap;
-      pointer-events: none;
-    `;
-    notification.textContent = `✓ Spoiler Revealed`;
+    notification.className = 'spoiler-shield-notification';
+    notification.textContent = `✅ Spoiler Revealed!`;
 
     element.appendChild(notification);
 
-    // Animate and remove
     setTimeout(() => {
       notification.style.opacity = '0';
       notification.style.transform = 'translateY(-10px)';
-    }, 2000);
+    }, 2500);
     
     setTimeout(() => {
       if (notification.parentNode) {
         notification.remove();
       }
-    }, 2300);
+    }, 2800);
   }
 
   setupObservers() {
-    // Clean up existing observers
     this.cleanupObservers();
 
-    // Main mutation observer for dynamic content
     const mutationObserver = new MutationObserver((mutations) => {
       let shouldScan = false;
       
       mutations.forEach((mutation) => {
         if (mutation.addedNodes.length > 0) {
           mutation.addedNodes.forEach(node => {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-              // Check if the new node or its children contain text content
-              if (this.hasTextContent(node)) {
-                // Scan the new element immediately
-                this.checkAndBlurElement(node);
-                
-                // Also scan child elements that might be content containers
-                const childElements = node.querySelectorAll(this.getSiteSpecificSelectors().join(','));
-                childElements.forEach(child => this.checkAndBlurElement(child));
-                
-                shouldScan = true;
-              }
+            if (node.nodeType === Node.ELEMENT_NODE && this.hasTextContent(node)) {
+              this.checkAndBlurElement(node);
+              shouldScan = true;
             }
           });
         }
       });
 
       if (shouldScan) {
-        // Debounced full page scan for any elements we might have missed
         this.scanPage();
       }
     });
 
     mutationObserver.observe(document.body, {
       childList: true,
-      subtree: true,
-      attributes: false,
-      characterData: false
+      subtree: true
     });
 
     this.observers.push(mutationObserver);
 
-    // Intersection observer for elements entering viewport
-    if ('IntersectionObserver' in window) {
-      const intersectionObserver = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting && !this.processedElements.has(entry.target)) {
-            this.checkAndBlurElement(entry.target);
-          }
-        });
-      }, {
-        rootMargin: '100px' // Start checking elements 100px before they enter viewport
-      });
-
-      // Observe all existing content elements
-      this.getSiteSpecificSelectors().forEach(selector => {
-        try {
-          const elements = document.querySelectorAll(selector);
-          elements.forEach(el => intersectionObserver.observe(el));
-        } catch (e) {
-          // Skip failed selectors
-        }
-      });
-
-      this.observers.push(intersectionObserver);
-    }
-
-    // Scroll-based scanning for infinite scroll
-    let scrollTimeout;
-    const scrollHandler = () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(() => {
+    // Periodic scanning
+    const intervalId = setInterval(() => {
+      if (this.isActive) {
         this.scanPage();
-      }, 150);
-    };
-    
-    window.addEventListener('scroll', scrollHandler, { passive: true });
-
-    // Focus-based scanning (when user returns to tab)
-    const focusHandler = () => {
-      setTimeout(() => this.scanPage(), 300);
-    };
-    
-    window.addEventListener('focus', focusHandler);
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        setTimeout(() => this.scanPage(), 300);
       }
-    });
+    }, 2000);
 
-    console.log("[Spoiler Shield] Enhanced observers set up for dynamic content");
+    this.observers.push({ disconnect: () => clearInterval(intervalId) });
+
+    console.log("[Spoiler Shield] Observers set up");
   }
 
   hasTextContent(element) {
     if (!element || element.nodeType !== Node.ELEMENT_NODE) return false;
-    
     const text = element.textContent?.trim() || '';
-    return text.length > 5; // Minimum text length to be considered content
+    return text.length > 5;
   }
 
   cleanupObservers() {
@@ -490,18 +535,16 @@ class SpoilerShield {
     this.observers = [];
   }
 
-  // Handle messages from popup
   handleMessage(message) {
     if (message.action === 'updateWatchlist') {
       this.watchlist = message.watchlist || [];
-      this.processedElements = new WeakSet(); // Reset to re-scan with new terms
+      this.processedElements = new WeakSet();
       console.log("[Spoiler Shield] Watchlist updated:", this.watchlist);
       
       if (this.watchlist.length > 0) {
         this.isActive = true;
-        // Remove existing blurs that might not match new watchlist
         this.removeAllBlurs();
-        setTimeout(() => this.scanPage(), 100);
+        setTimeout(() => this.scanPage(), 200);
       } else {
         this.isActive = false;
         this.removeAllBlurs();
@@ -509,31 +552,25 @@ class SpoilerShield {
     } else if (message.action === 'rescan') {
       this.processedElements = new WeakSet();
       this.removeAllBlurs();
-      setTimeout(() => this.scanPage(), 100);
+      setTimeout(() => this.scanPage(), 200);
       console.log("[Spoiler Shield] Manual rescan completed");
     }
   }
 
   removeAllBlurs() {
-    // Remove all existing blurs
-    const blurredElements = document.querySelectorAll('[data-spoiler-blurred="true"]');
+    const blurredElements = document.querySelectorAll('[data-spoiler-blurred="true"], .spoiler-shield-blurred');
     blurredElements.forEach(element => {
-      // Restore styles
-      element.style.filter = '';
-      element.style.cursor = '';
-      element.style.userSelect = '';
+      element.classList.remove('spoiler-shield-blurred', 'spoiler-shield-wrapper');
       
-      // Remove data attributes
       delete element.dataset.spoilerBlurred;
       delete element.dataset.spoilerTerm;
+      delete element.dataset.overlayId;
       
-      // Remove overlays
       const overlays = element.querySelectorAll('.spoiler-shield-overlay');
       overlays.forEach(overlay => overlay.remove());
     });
   }
 
-  // Cleanup method
   destroy() {
     this.cleanupObservers();
     this.removeAllBlurs();
@@ -542,30 +579,41 @@ class SpoilerShield {
     if (this.scanTimeout) {
       clearTimeout(this.scanTimeout);
     }
+    
+    const styleElement = document.getElementById('spoiler-shield-styles');
+    if (styleElement) {
+      styleElement.remove();
+    }
   }
 }
 
-// Initialize the spoiler shield
-const spoilerShield = new SpoilerShield();
+// Initialize only once
+if (!window.spoilerShieldInstance) {
+  window.spoilerShieldInstance = new SpoilerShield();
 
-// Set up message listener
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  spoilerShield.handleMessage(message);
-  sendResponse({ success: true });
-});
-
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    spoilerShield.initialize();
+  // Set up message listener
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    window.spoilerShieldInstance.handleMessage(message);
+    sendResponse({ success: true });
   });
-} else {
-  spoilerShield.initialize();
+
+  // Initialize when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      window.spoilerShieldInstance.initialize();
+    });
+  } else {
+    window.spoilerShieldInstance.initialize();
+  }
+
+  // Cleanup when page unloads
+  window.addEventListener('beforeunload', () => {
+    window.spoilerShieldInstance.destroy();
+    window.spoilerShieldInstance = null;
+    window.spoilerShieldLoaded = false;
+  });
+
+  console.log("[Spoiler Shield] Content script loaded and ready (v1.4 - Ultra-Visible Button)");
 }
 
-// Cleanup when page unloads
-window.addEventListener('beforeunload', () => {
-  spoilerShield.destroy();
-});
-
-console.log("[Spoiler Shield] Content script loaded and ready (v1.2 - Fixed)");
+} // End of spoilerShieldLoaded check
