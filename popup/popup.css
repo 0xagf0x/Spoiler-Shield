@@ -1,4 +1,4 @@
-/* popup/popup.css - Complete version */
+/* popup/popup.css - Complete version with toggle button */
 body {
   width: 320px;
   min-height: 400px;
@@ -22,12 +22,61 @@ h1 {
 
 #content {
   padding: 20px;
+  transition: opacity 0.3s ease;
 }
 
 p {
   margin: 0 0 15px 0;
   font-size: 14px;
   opacity: 0.9;
+}
+
+/* Toggle button styles */
+.toggle-btn {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-btn.enabled {
+  background: linear-gradient(135deg, #53b269, #45a058);
+  color: white;
+  border: 2px solid rgba(83, 178, 105, 0.5);
+}
+
+.toggle-btn.enabled:hover {
+  background: linear-gradient(135deg, #45a058, #3d8e4a);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(83, 178, 105, 0.4);
+}
+
+.toggle-btn.disabled {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  border: 2px solid rgba(239, 68, 68, 0.5);
+}
+
+.toggle-btn.disabled:hover {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+}
+
+.toggle-btn:active {
+  transform: translateY(0);
 }
 
 /* Input and button styles */
@@ -43,6 +92,12 @@ p {
   box-sizing: border-box;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease;
+}
+
+#input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 #input::placeholder {
@@ -55,10 +110,15 @@ p {
   background: rgba(255, 255, 255, 0.25);
 }
 
+#input:disabled:focus {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.2);
+}
+
 #addBtn {
   width: 100%;
   padding: 12px;
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: linear-gradient(135deg, #53b269, #45a058);
   color: white;
   border: none;
   border-radius: 8px;
@@ -69,13 +129,20 @@ p {
   margin-bottom: 20px;
 }
 
-#addBtn:hover {
+#addBtn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 12px rgba(83, 178, 105, 0.3);
 }
 
-#addBtn:active {
+#addBtn:active:not(:disabled) {
   transform: translateY(0);
+}
+
+#addBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 /* Watchlist styles */
@@ -142,9 +209,14 @@ p {
   margin-left: 10px;
 }
 
-.remove-btn:hover {
+.remove-btn:hover:not(:disabled) {
   color: rgba(239, 68, 68, 1);
   transform: scale(1.1);
+}
+
+.remove-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .empty-state {
@@ -190,10 +262,15 @@ p {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.quick-suggestions button:hover {
+.quick-suggestions button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.3);
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.quick-suggestions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* Rescan button styles */
@@ -212,9 +289,15 @@ button[style*="width: 100%"] {
   border: 1px solid rgba(255, 255, 255, 0.3) !important;
 }
 
-button[style*="width: 100%"]:hover {
+button[style*="width: 100%"]:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.3) !important;
   transform: translateY(-1px) !important;
+}
+
+button[style*="width: 100%"]:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.5 !important;
+  transform: none !important;
 }
 
 /* Toast notification styles */
@@ -223,7 +306,7 @@ button[style*="width: 100%"]:hover {
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%) translateY(100px);
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: linear-gradient(135deg, #53b269, #45a058);
   color: white;
   padding: 8px 16px;
   border-radius: 20px;
@@ -231,7 +314,7 @@ button[style*="width: 100%"]:hover {
   font-weight: 600;
   z-index: 10000;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+  box-shadow: 0 4px 15px rgba(83, 178, 105, 0.4);
   opacity: 0;
 }
 
@@ -248,8 +331,8 @@ button[style*="width: 100%"]:hover {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+  background: #53b269;
+  box-shadow: 0 0 8px rgba(83, 178, 105, 0.5);
   animation: pulse 2s infinite;
 }
 
@@ -262,6 +345,15 @@ button[style*="width: 100%"]:hover {
   0% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.2); opacity: 0.7; }
   100% { transform: scale(1); opacity: 1; }
+}
+
+/* Content disabled state */
+#content[style*="opacity: 0.5"] .watchlist-item {
+  opacity: 0.7;
+}
+
+#content[style*="opacity: 0.5"] .quick-suggestions p {
+  opacity: 0.5;
 }
 
 /* Responsive adjustments */

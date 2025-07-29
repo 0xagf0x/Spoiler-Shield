@@ -1,24 +1,4 @@
-// // Minimal Spoiler Shield Background Script - v1.1
-// console.log('[Background] Service worker loaded');
-
-// chrome.runtime.onInstalled.addListener(() => {
-//   console.log('[Background] Extension installed');
-//   chrome.storage.sync.set({ watchlist: [] });
-// });
-
-// chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-//   console.log('[Background] Message received:', message.type);
-//   sendResponse({ success: true });
-// });
-
-// console.log('[Background] Service worker ready');
-
-
-
-
-
-
-// Enhanced Spoiler Shield Background Script - v1.2
+// Enhanced Spoiler Shield Background Script with Toggle Support - v1.3
 console.log('[Background] Service worker loaded');
 
 // Extension installation/update handler
@@ -26,21 +6,29 @@ chrome.runtime.onInstalled.addListener((details) => {
   console.log('[Background] Extension installed/updated:', details.reason);
   
   // Initialize storage with empty watchlist if not exists
-  chrome.storage.sync.get(['watchlist'], (result) => {
+  chrome.storage.sync.get(['watchlist', 'extensionEnabled'], (result) => {
+    const updates = {};
+    
     if (!result.watchlist) {
-      chrome.storage.sync.set({ 
-        watchlist: [],
-        extensionEnabled: true,
-        lastVersion: chrome.runtime.getManifest().version
-      });
-      console.log('[Background] Storage initialized');
+      updates.watchlist = [];
+    }
+    
+    if (result.extensionEnabled === undefined) {
+      updates.extensionEnabled = true; // Default to enabled
+    }
+    
+    updates.lastVersion = chrome.runtime.getManifest().version;
+    
+    if (Object.keys(updates).length > 0) {
+      chrome.storage.sync.set(updates);
+      console.log('[Background] Storage initialized with:', updates);
     }
   });
 
   // Show welcome notification on first install
   if (details.reason === 'install') {
     chrome.action.setBadgeText({ text: 'NEW' });
-    chrome.action.setBadgeBackgroundColor({ color: '#10b981' });
+    chrome.action.setBadgeBackgroundColor({ color: '#53b269' });
     
     // Clear badge after 5 seconds
     setTimeout(() => {
@@ -59,47 +47,107 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
       
     case 'getWatchlist':
-      chrome.storage.sync.get(['watchlist'], (result) => {
-        sendResponse({ watchlist: result.watchlist || [] });
+      chrome.storage.sync.get(['watchlist', 'extensionEnabled'], (result) => {
+        sendResponse({ 
+          watchlist: result.watchlist || [],
+          extensionEnabled: result.extensionEnabled !== false
+        });
       });
       return true; // Keep channel open for async response
+      
+    case 'toggleExtension':
+      handleToggle(message.enabled);
+      break;
       
     case 'spoilerDetected':
       handleSpoilerDetection(message.term, sender.tab);
       break;
       
     case 'extensionStatus':
-      sendResponse({ 
-        enabled: true,
-        version: chrome.runtime.getManifest().version 
+      chrome.storage.sync.get(['extensionEnabled'], (result) => {
+        sendResponse({ 
+          enabled: result.extensionEnabled !== false,
+          version: chrome.runtime.getManifest().version 
+        });
       });
-      break;
+      return true; // Keep channel open for async response
       
     default:
       sendResponse({ success: true });
   }
 });
 
+// Handle extension toggle
+function handleToggle(enabled) {
+  console.log('[Background] Toggle extension:', enabled);
+  
+  chrome.storage.sync.set({ extensionEnabled: enabled }, () => {
+    // Update badge based on state
+    updateBadgeForState(enabled);
+    
+    // Notify all content scripts
+    notifyAllContentScripts();
+  });
+}
+
 // Handle watchlist updates
 function handleWatchlistUpdate(watchlist) {
   console.log('[Background] Updating watchlist:', watchlist);
   
-  // Update badge to show number of watched terms
-  const badgeText = watchlist.length > 0 ? watchlist.length.toString() : '';
-  chrome.action.setBadgeText({ text: badgeText });
-  chrome.action.setBadgeBackgroundColor({ color: '#667eea' });
-  
-  // Notify all content scripts of the update
-  chrome.tabs.query({}, (tabs) => {
-    tabs.forEach(tab => {
-      if (tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
-        chrome.tabs.sendMessage(tab.id, {
-          action: 'updateWatchlist',
-          watchlist: watchlist
-        }).catch(() => {
-          // Ignore errors for tabs without content script
-        });
-      }
+  chrome.storage.sync.get(['extensionEnabled'], (result) => {
+    const extensionEnabled = result.extensionEnabled !== false;
+    
+    // Update badge to show status
+    updateBadgeForWatchlist(watchlist, extensionEnabled);
+    
+    // Notify all content scripts
+    notifyAllContentScripts();
+  });
+}
+
+// Update badge based on extension state and watchlist
+function updateBadgeForState(enabled) {
+  if (enabled) {
+    chrome.storage.sync.get(['watchlist'], (result) => {
+      const watchlist = result.watchlist || [];
+      updateBadgeForWatchlist(watchlist, true);
+    });
+  } else {
+    chrome.action.setBadgeText({ text: 'OFF' });
+    chrome.action.setBadgeBackgroundColor({ color: '#ef4444' });
+  }
+}
+
+function updateBadgeForWatchlist(watchlist, enabled) {
+  if (!enabled) {
+    chrome.action.setBadgeText({ text: 'OFF' });
+    chrome.action.setBadgeBackgroundColor({ color: '#ef4444' });
+  } else if (watchlist.length > 0) {
+    chrome.action.setBadgeText({ text: watchlist.length.toString() });
+    chrome.action.setBadgeBackgroundColor({ color: '#53b269' });
+  } else {
+    chrome.action.setBadgeText({ text: '' });
+  }
+}
+
+// Notify all content scripts with current state
+function notifyAllContentScripts() {
+  chrome.storage.sync.get(['watchlist', 'extensionEnabled'], (result) => {
+    const watchlist = result.watchlist || [];
+    const extensionEnabled = result.extensionEnabled !== false;
+    
+    chrome.tabs.query({}, (tabs) => {
+      tabs.forEach(tab => {
+        if (tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
+          chrome.tabs.sendMessage(tab.id, {
+            action: 'updateWatchlist',
+            watchlist: extensionEnabled ? watchlist : [],
+            extensionEnabled: extensionEnabled
+          }).catch(() => {
+            // Ignore errors for tabs without content script
+          });
+        }
+      });
     });
   });
 }
@@ -154,6 +202,20 @@ chrome.runtime.onInstalled.addListener(() => {
       '*://*.instagram.com/*'
     ]
   });
+  
+  chrome.contextMenus.create({
+    id: 'toggleExtension',
+    title: 'Toggle Spoiler Shield',
+    contexts: ['page', 'frame'],
+    documentUrlPatterns: [
+      '*://*.reddit.com/*',
+      '*://*.twitter.com/*',
+      '*://*.x.com/*',
+      '*://*.facebook.com/*',
+      '*://*.youtube.com/*',
+      '*://*.instagram.com/*'
+    ]
+  });
 });
 
 // Context menu click handler
@@ -187,15 +249,51 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         }
       });
     }
+  } else if (info.menuItemId === 'toggleExtension') {
+    // Toggle extension on/off
+    chrome.storage.sync.get(['extensionEnabled'], (result) => {
+      const currentState = result.extensionEnabled !== false;
+      const newState = !currentState;
+      
+      handleToggle(newState);
+      
+      // Show notification
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon-shield.png',
+        title: 'Spoiler Shield',
+        message: newState ? 'Extension enabled' : 'Extension disabled'
+      });
+    });
   }
 });
 
 // Storage change listener
 chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === 'sync' && changes.watchlist) {
-    console.log('[Background] Watchlist changed:', changes.watchlist.newValue);
-    handleWatchlistUpdate(changes.watchlist.newValue || []);
+  if (namespace === 'sync') {
+    if (changes.watchlist) {
+      console.log('[Background] Watchlist changed:', changes.watchlist.newValue);
+      chrome.storage.sync.get(['extensionEnabled'], (result) => {
+        const enabled = result.extensionEnabled !== false;
+        updateBadgeForWatchlist(changes.watchlist.newValue || [], enabled);
+      });
+    }
+    
+    if (changes.extensionEnabled) {
+      console.log('[Background] Extension state changed:', changes.extensionEnabled.newValue);
+      updateBadgeForState(changes.extensionEnabled.newValue);
+    }
+    
+    // Always notify content scripts when storage changes
+    notifyAllContentScripts();
   }
+});
+
+// Initialize badge on startup
+chrome.storage.sync.get(['watchlist', 'extensionEnabled'], (result) => {
+  const watchlist = result.watchlist || [];
+  const enabled = result.extensionEnabled !== false;
+  updateBadgeForWatchlist(watchlist, enabled);
 });
 
 // Alarm for periodic cleanup (optional)
@@ -237,4 +335,4 @@ chrome.runtime.onInstalled.addListener(keepServiceWorkerAlive);
 // Stop keep-alive when extension is suspended
 chrome.runtime.onSuspend.addListener(stopKeepAlive);
 
-console.log('[Background] Service worker ready with enhanced features');
+console.log('[Background] Service worker ready with enhanced features and toggle support');

@@ -1,4 +1,4 @@
-// Spoiler Shield - Auto-Rescan Enhanced Version (v1.5)
+// Spoiler Shield - Auto-Rescan Enhanced Version with Toggle Support (v1.6)
 console.log("[Spoiler Shield] Loading on", window.location.hostname);
 
 // Prevent multiple initializations
@@ -12,6 +12,7 @@ if (window.spoilerShieldLoaded) {
       this.watchlist = [];
       this.processedElements = new WeakSet();
       this.isActive = false;
+      this.extensionEnabled = true; // New property to track global toggle
       this.observers = [];
       this.scanTimeout = null;
       this.overlayCounter = 0;
@@ -25,14 +26,22 @@ if (window.spoilerShieldLoaded) {
 
     async initialize() {
       try {
-        // Get watchlist from storage
-        const result = await chrome.storage.sync.get(["watchlist"]);
+        // Get watchlist and extension state from storage
+        const result = await chrome.storage.sync.get(["watchlist", "extensionEnabled"]);
         this.watchlist = result.watchlist || [];
+        this.extensionEnabled = result.extensionEnabled !== false; // Default to true if not set
 
-        // console.log("[Spoiler Shield] Watchlist loaded:", this.watchlist);
+        console.log("[Spoiler Shield] Watchlist loaded:", this.watchlist);
+        console.log("[Spoiler Shield] Extension enabled:", this.extensionEnabled);
+
+        // Only activate if extension is enabled and watchlist has items
+        if (!this.extensionEnabled) {
+          console.log("[Spoiler Shield] Extension is disabled");
+          return;
+        }
 
         if (this.watchlist.length === 0) {
-          // console.log("[Spoiler Shield] No watchlist items found");
+          console.log("[Spoiler Shield] No watchlist items found");
           return;
         }
 
@@ -154,7 +163,7 @@ if (window.spoilerShieldLoaded) {
         position: absolute !important;
         top: 15px !important;
         right: 15px !important;
-        background: linear-gradient(135deg, #00b894, #00a085) !important;
+        background: linear-gradient(135deg, #53b269, #45a058) !important;
         color: white !important;
         padding: 8px 16px !important;
         border-radius: 20px !important;
@@ -163,7 +172,7 @@ if (window.spoilerShieldLoaded) {
         z-index: 2147483647 !important;
         opacity: 1 !important;
         transition: all 0.3s ease !important;
-        box-shadow: 0 4px 12px rgba(0, 184, 148, 0.4) !important;
+        box-shadow: 0 4px 12px rgba(83, 178, 105, 0.4) !important;
         white-space: nowrap !important;
         pointer-events: none !important;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif !important;
@@ -174,7 +183,7 @@ if (window.spoilerShieldLoaded) {
         position: fixed !important;
         top: 20px !important;
         left: 20px !important;
-        background: rgba(16, 185, 129, 0.9) !important;
+        background: rgba(83, 178, 105, 0.9) !important;
         color: white !important;
         padding: 6px 12px !important;
         border-radius: 15px !important;
@@ -205,14 +214,14 @@ if (window.spoilerShieldLoaded) {
       }
     `;
       document.head.appendChild(style);
-      // console.log("[Spoiler Shield] CSS injected successfully");
+      console.log("[Spoiler Shield] CSS injected successfully");
     }
 
     setupScrollMonitoring() {
       let ticking = false;
 
       const handleScroll = () => {
-        if (!ticking && this.isActive) {
+        if (!ticking && this.isActive && this.extensionEnabled) {
           requestAnimationFrame(() => {
             const currentScrollY =
               window.pageYOffset || document.documentElement.scrollTop;
@@ -222,7 +231,7 @@ if (window.spoilerShieldLoaded) {
 
             // Trigger scan if user scrolled more than 150px (more sensitive)
             if (scrollDifference > 150) {
-              // console.log("[Spoiler Shield] Scroll detected, scanning for new content");
+              console.log("[Spoiler Shield] Scroll detected, scanning for new content");
               this.showScanIndicator();
               this.scanPage();
               this.lastScrollY = currentScrollY;
@@ -247,6 +256,8 @@ if (window.spoilerShieldLoaded) {
       // Monitor when new elements come into view
       this.intersectionObserver = new IntersectionObserver(
         (entries) => {
+          if (!this.extensionEnabled) return;
+          
           let shouldScan = false;
 
           entries.forEach((entry) => {
@@ -277,6 +288,8 @@ if (window.spoilerShieldLoaded) {
     }
 
     observeVisibleElements() {
+      if (!this.extensionEnabled) return;
+      
       const selectors = this.getSiteSpecificSelectors();
       selectors.forEach((selector) => {
         try {
@@ -300,14 +313,14 @@ if (window.spoilerShieldLoaded) {
 
       // Automatic rescan every 2 seconds when page is active (more frequent)
       this.autoScanInterval = setInterval(() => {
-        if (this.isActive && document.visibilityState === "visible") {
+        if (this.isActive && this.extensionEnabled && document.visibilityState === "visible") {
           this.scanPage();
         }
       }, 2000);
 
       // Rescan when page becomes visible again
       const visibilityHandler = () => {
-        if (this.isActive && document.visibilityState === "visible") {
+        if (this.isActive && this.extensionEnabled && document.visibilityState === "visible") {
           setTimeout(() => this.scanPage(), 200);
         }
       };
@@ -321,7 +334,7 @@ if (window.spoilerShieldLoaded) {
 
       // Rescan when window regains focus
       const focusHandler = () => {
-        if (this.isActive) {
+        if (this.isActive && this.extensionEnabled) {
           setTimeout(() => this.scanPage(), 100);
         }
       };
@@ -334,6 +347,8 @@ if (window.spoilerShieldLoaded) {
     }
 
     showScanIndicator() {
+      if (!this.extensionEnabled) return;
+      
       // Remove existing indicator
       const existingIndicator = document.querySelector(
         ".spoiler-shield-scan-indicator"
@@ -364,7 +379,7 @@ if (window.spoilerShieldLoaded) {
     }
 
     scanPage() {
-      if (!this.isActive || this.watchlist.length === 0) {
+      if (!this.isActive || !this.extensionEnabled || this.watchlist.length === 0) {
         return;
       }
 
@@ -405,7 +420,7 @@ if (window.spoilerShieldLoaded) {
               // Debug: log what text we're checking
               const text = this.extractTextContent(element);
               if (text.length > 3) {
-                // console.log(`[Spoiler Shield] Checking text: "${text.substring(0, 100)}..."`);
+                console.log(`[Spoiler Shield] Checking text: "${text.substring(0, 100)}..."`);
                 this.checkAndBlurElement(element);
                 newElementsFound++;
               }
@@ -524,7 +539,7 @@ if (window.spoilerShieldLoaded) {
     }
 
     checkAndBlurElement(element) {
-      if (!element || this.processedElements.has(element)) return;
+      if (!element || this.processedElements.has(element) || !this.extensionEnabled) return;
 
       this.processedElements.add(element);
 
@@ -594,7 +609,7 @@ if (window.spoilerShieldLoaded) {
     }
 
     blurElement(element, term) {
-      if (element.dataset.spoilerBlurred) {
+      if (element.dataset.spoilerBlurred || !this.extensionEnabled) {
         return;
       }
 
@@ -737,6 +752,8 @@ if (window.spoilerShieldLoaded) {
       this.cleanupObservers();
 
       const mutationObserver = new MutationObserver((mutations) => {
+        if (!this.extensionEnabled) return;
+        
         let shouldScan = false;
 
         mutations.forEach((mutation) => {
@@ -798,20 +815,36 @@ if (window.spoilerShieldLoaded) {
     handleMessage(message) {
       if (message.action === "updateWatchlist") {
         this.watchlist = message.watchlist || [];
+        this.extensionEnabled = message.extensionEnabled !== false;
         this.processedElements = new WeakSet();
 
-        if (this.watchlist.length > 0) {
+        console.log("[Spoiler Shield] Updated - Enabled:", this.extensionEnabled, "Watchlist:", this.watchlist);
+
+        // Remove all existing blurs first
+        this.removeAllBlurs();
+
+        if (this.extensionEnabled && this.watchlist.length > 0) {
           this.isActive = true;
-          this.removeAllBlurs();
+          // Reinject CSS in case it was removed
+          this.injectOverlayCSS();
+          // Set up observers if not already active
+          if (this.observers.length === 0) {
+            this.setupObservers();
+            this.setupScrollMonitoring();
+            this.setupIntersectionObserver();
+            this.setupAutoRescan();
+          }
           setTimeout(() => this.scanPage(), 200);
         } else {
           this.isActive = false;
-          this.removeAllBlurs();
+          // Don't clean up observers completely, just deactivate
         }
       } else if (message.action === "rescan") {
-        this.processedElements = new WeakSet();
-        this.removeAllBlurs();
-        setTimeout(() => this.scanPage(), 200);
+        if (this.extensionEnabled && this.watchlist.length > 0) {
+          this.processedElements = new WeakSet();
+          this.removeAllBlurs();
+          setTimeout(() => this.scanPage(), 200);
+        }
       }
     }
 
@@ -838,6 +871,7 @@ if (window.spoilerShieldLoaded) {
       this.cleanupObservers();
       this.removeAllBlurs();
       this.isActive = false;
+      this.extensionEnabled = false;
 
       if (this.scanTimeout) {
         clearTimeout(this.scanTimeout);

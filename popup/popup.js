@@ -1,16 +1,20 @@
-// popup/popup.js - Enhanced version
+// popup/popup.js - Enhanced version with On/Off Toggle
 
 const input = document.getElementById('input');
 const addBtn = document.getElementById('addBtn');
 const list = document.getElementById('watchlist');
 
 let currentWatchlist = [];
+let extensionEnabled = true;
 
-// Load existing watchlist on startup
-chrome.storage.sync.get(['watchlist'], (res) => {
+// Load existing watchlist and extension state on startup
+chrome.storage.sync.get(['watchlist', 'extensionEnabled'], (res) => {
   currentWatchlist = res.watchlist || [];
+  extensionEnabled = res.extensionEnabled !== false; // Default to true if not set
+  
   currentWatchlist.forEach(addToList);
   updateCounter();
+  updateToggleState();
 });
 
 // Add button click handler
@@ -125,12 +129,13 @@ function updateCounter() {
 }
 
 function notifyContentScripts() {
-  // Notify all tabs with the updated watchlist
+  // Notify all tabs with the updated watchlist and extension state
   chrome.tabs.query({}, (tabs) => {
     tabs.forEach(tab => {
       chrome.tabs.sendMessage(tab.id, {
         action: 'updateWatchlist',
-        watchlist: currentWatchlist
+        watchlist: extensionEnabled ? currentWatchlist : [],
+        extensionEnabled: extensionEnabled
       }).catch(() => {
         // Ignore errors for tabs without content script
       });
@@ -159,6 +164,59 @@ function showToast(message) {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
   }, 2000);
+}
+
+// Toggle extension on/off
+function toggleExtension() {
+  extensionEnabled = !extensionEnabled;
+  
+  // Save state to storage
+  chrome.storage.sync.set({ extensionEnabled }, () => {
+    updateToggleState();
+    notifyContentScripts();
+    
+    const message = extensionEnabled ? 'Spoiler Shield enabled!' : 'Spoiler Shield disabled!';
+    showToast(message);
+  });
+}
+
+function updateToggleState() {
+  const toggleBtn = document.getElementById('toggleBtn');
+  const content = document.getElementById('content');
+  
+  if (toggleBtn) {
+    toggleBtn.textContent = extensionEnabled ? 'ON' : 'OFF';
+    toggleBtn.className = extensionEnabled ? 'toggle-btn enabled' : 'toggle-btn disabled';
+    toggleBtn.title = extensionEnabled ? 'Click to disable Spoiler Shield' : 'Click to enable Spoiler Shield';
+  }
+  
+  // Disable/enable controls based on state
+  if (content) {
+    content.style.opacity = extensionEnabled ? '1' : '0.5';
+    input.disabled = !extensionEnabled;
+    addBtn.disabled = !extensionEnabled;
+    
+    // Disable/enable remove buttons
+    const removeButtons = document.querySelectorAll('.remove-btn');
+    removeButtons.forEach(btn => {
+      btn.disabled = !extensionEnabled;
+      btn.style.opacity = extensionEnabled ? '1' : '0.5';
+    });
+    
+    // Disable/enable quick suggestion buttons
+    const suggestionButtons = document.querySelectorAll('.quick-suggestions button');
+    suggestionButtons.forEach(btn => {
+      btn.disabled = !extensionEnabled;
+      btn.style.opacity = extensionEnabled ? '1' : '0.5';
+    });
+    
+    // Disable/enable rescan button
+    const rescanBtn = document.querySelector('button[style*="width: 100%"]');
+    if (rescanBtn) {
+      rescanBtn.disabled = !extensionEnabled;
+      rescanBtn.style.opacity = extensionEnabled ? '1' : '0.5';
+    }
+  }
 }
 
 // Add some quick suggestions
@@ -200,12 +258,15 @@ function addQuickSuggestions() {
     `;
     
     btn.addEventListener('click', () => {
+      if (!extensionEnabled) return;
       input.value = suggestion;
       addItem();
     });
     
     btn.addEventListener('mouseover', () => {
-      btn.style.background = 'rgba(255,255,255,0.3)';
+      if (extensionEnabled) {
+        btn.style.background = 'rgba(255,255,255,0.3)';
+      }
     });
     
     btn.addEventListener('mouseout', () => {
@@ -221,6 +282,21 @@ function addQuickSuggestions() {
   const content = document.getElementById('content');
   const firstP = content.querySelector('p');
   firstP.parentNode.insertBefore(quickDiv, list);
+}
+
+// Add toggle button
+function addToggleButton() {
+  const toggleBtn = document.createElement('button');
+  toggleBtn.id = 'toggleBtn';
+  toggleBtn.className = 'toggle-btn enabled';
+  toggleBtn.textContent = '🛡️ ON';
+  toggleBtn.title = 'Click to disable Spoiler Shield';
+  
+  toggleBtn.addEventListener('click', toggleExtension);
+  
+  // Insert at the top of content, right after the header
+  const content = document.getElementById('content');
+  content.insertBefore(toggleBtn, content.firstChild);
 }
 
 // Add rescan button
@@ -240,6 +316,11 @@ function addRescanButton() {
   `;
   
   rescanBtn.addEventListener('click', () => {
+    if (!extensionEnabled) {
+      showToast('Enable Spoiler Shield first!');
+      return;
+    }
+    
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]) {
         chrome.tabs.sendMessage(tabs[0].id, { action: 'rescan' })
@@ -254,6 +335,7 @@ function addRescanButton() {
 
 // Initialize enhancements when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+  addToggleButton();
   addQuickSuggestions();
   addRescanButton();
 });
