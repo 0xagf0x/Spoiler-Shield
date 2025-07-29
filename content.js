@@ -1,5 +1,4 @@
 // Spoiler Shield - Auto-Rescan Enhanced Version with Toggle Support (v1.6)
-console.log("[Spoiler Shield] Loading on", window.location.hostname);
 
 // Prevent multiple initializations
 if (window.spoilerShieldLoaded) {
@@ -31,17 +30,12 @@ if (window.spoilerShieldLoaded) {
         this.watchlist = result.watchlist || [];
         this.extensionEnabled = result.extensionEnabled !== false; // Default to true if not set
 
-        console.log("[Spoiler Shield] Watchlist loaded:", this.watchlist);
-        console.log("[Spoiler Shield] Extension enabled:", this.extensionEnabled);
-
         // Only activate if extension is enabled and watchlist has items
         if (!this.extensionEnabled) {
-          console.log("[Spoiler Shield] Extension is disabled");
           return;
         }
 
         if (this.watchlist.length === 0) {
-          console.log("[Spoiler Shield] No watchlist items found");
           return;
         }
 
@@ -214,7 +208,6 @@ if (window.spoilerShieldLoaded) {
       }
     `;
       document.head.appendChild(style);
-      console.log("[Spoiler Shield] CSS injected successfully");
     }
 
     setupScrollMonitoring() {
@@ -231,7 +224,6 @@ if (window.spoilerShieldLoaded) {
 
             // Trigger scan if user scrolled more than 150px (more sensitive)
             if (scrollDifference > 150) {
-              console.log("[Spoiler Shield] Scroll detected, scanning for new content");
               this.showScanIndicator();
               this.scanPage();
               this.lastScrollY = currentScrollY;
@@ -411,16 +403,11 @@ if (window.spoilerShieldLoaded) {
       siteSelectors.forEach((selector) => {
         try {
           const elements = document.querySelectorAll(selector);
-          console.log(
-            `[Spoiler Shield] Found ${elements.length} elements for selector: ${selector}`
-          );
-
           elements.forEach((element) => {
             if (!this.processedElements.has(element)) {
               // Debug: log what text we're checking
               const text = this.extractTextContent(element);
               if (text.length > 3) {
-                console.log(`[Spoiler Shield] Checking text: "${text.substring(0, 100)}..."`);
                 this.checkAndBlurElement(element);
                 newElementsFound++;
               }
@@ -817,8 +804,6 @@ if (window.spoilerShieldLoaded) {
         this.watchlist = message.watchlist || [];
         this.extensionEnabled = message.extensionEnabled !== false;
         this.processedElements = new WeakSet();
-
-        console.log("[Spoiler Shield] Updated - Enabled:", this.extensionEnabled, "Watchlist:", this.watchlist);
 
         // Remove all existing blurs first
         this.removeAllBlurs();

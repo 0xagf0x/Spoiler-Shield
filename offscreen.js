@@ -1,7 +1,3 @@
-// offscreen.js - No TensorFlow, simple heuristic ML fallback
-
-console.log("[Offscreen] ML processor loaded (no TF version)");
-
 class MLProcessor {
   constructor() {
     this.isInitialized = false;
@@ -9,8 +5,6 @@ class MLProcessor {
 
   async initialize() {
     if (this.isInitialized) return true;
-
-    console.log("[Offscreen] Simple ML initialization done");
     this.isInitialized = true;
     return true;
   }
@@ -51,8 +45,6 @@ const mlProcessor = new MLProcessor();
 const port = chrome.runtime.connect({ name: "offscreen-port" });
 
 port.onMessage.addListener(async (message) => {
-  console.log("[Offscreen] Received message:", message.type);
-
   if (message.type === "ANALYZE_IMAGE") {
     try {
       const result = await mlProcessor.analyzeImageData(
@@ -63,7 +55,6 @@ port.onMessage.addListener(async (message) => {
       );
       port.postMessage(result);
     } catch (error) {
-      console.error("[Offscreen] Analysis error:", error);
       port.postMessage({
         shouldBlur: false,
         confidence: 0,
@@ -77,7 +68,6 @@ port.onMessage.addListener(async (message) => {
       const success = await mlProcessor.initialize();
       port.postMessage({ success });
     } catch (error) {
-      console.error("[Offscreen] Init error:", error);
       port.postMessage({ success: false, error: error.message });
     }
   }
@@ -85,5 +75,5 @@ port.onMessage.addListener(async (message) => {
 
 // Initialize once when offscreen loads
 mlProcessor.initialize().then(success => {
-  console.log("[Offscreen] Initial ML setup:", success ? "success" : "failed");
+  console.warn("[Offscreen] Initial ML setup:", success ? "success" : "failed");
 });
