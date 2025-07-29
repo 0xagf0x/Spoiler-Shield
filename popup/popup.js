@@ -99,10 +99,14 @@ function removeItem(item, listElement) {
 
 function updateCounter() {
   const title = document.querySelector('h1');
+  title.textContent = 'Spoiler Shield';
+
+  const keywordsUsedValue = document.querySelector('[data-keywords-used-value]');
+
   if (currentWatchlist.length > 0) {
-    title.textContent = `Spoiler Shield (${currentWatchlist.length})`;
+    keywordsUsedValue.textContent = currentWatchlist.length;
   } else {
-    title.textContent = 'Spoiler Shield';
+    keywordsUsedValue.textContent = '0';
   }
   
   // Show empty state message
