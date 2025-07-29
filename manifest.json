@@ -8,17 +8,17 @@
     "default_popup": "popup/popup.html",
     "default_title": "Spoiler Shield - Protect yourself from spoilers",
     "default_icon": {
-      "16": "icons/icon1.png",
-      "32": "icons/icon1.png",
-      "48": "icons/icon1.png",
-      "128": "icons/icon1.png"
+      "16": "icons/icon-shield.png",
+      "32": "icons/icon-shield.png",
+      "48": "icons/icon-shield.png",
+      "128": "icons/icon-shield.png"
     }
   },
   "icons": {
-    "16": "icons/icon1.png",
-    "32": "icons/icon1.png",
-    "48": "icons/icon1.png",
-    "128": "icons/icon1.png"
+    "16": "icons/icon-shield.png",
+    "32": "icons/icon-shield.png",
+    "48": "icons/icon-shield.png",
+    "128": "icons/icon-shield.png"
   },
   "permissions": [
     "scripting",

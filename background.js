@@ -179,7 +179,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             // Show notification
             chrome.notifications.create({
               type: 'basic',
-              iconUrl: 'icons/icon1.png',
+              iconUrl: 'icons/icon-shield.png',
               title: 'Spoiler Shield',
               message: `Added "${selectedText}" to watchlist`
             });
