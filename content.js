@@ -1,4 +1,4 @@
-// Spoiler Shield - Ultra-Robust Reveal Button Version (v1.4)
+// Spoiler Shield - Auto-Rescan Enhanced Version (v1.5)
 console.log("[Spoiler Shield] Loading on", window.location.hostname);
 
 // Prevent multiple initializations
@@ -15,6 +15,12 @@ class SpoilerShield {
     this.observers = [];
     this.scanTimeout = null;
     this.overlayCounter = 0;
+    this.lastScrollY = 0;
+    this.scrollTimeout = null;
+    this.autoScanInterval = null;
+    this.intersectionObserver = null;
+    this.lastScanTime = 0;
+    this.scanCooldown = 300; // Minimum time between scans (ms)
   }
 
   async initialize() {
@@ -38,10 +44,13 @@ class SpoilerShield {
       // Start scanning immediately
       this.scanPage();
       
-      // Set up observers for dynamic content
+      // Set up all monitoring systems
       this.setupObservers();
+      this.setupScrollMonitoring();
+      this.setupIntersectionObserver();
+      this.setupAutoRescan();
       
-      console.log("[Spoiler Shield] Initialized and active (v1.4)");
+      console.log("[Spoiler Shield] Initialized with auto-rescan (v1.5)");
       
     } catch (error) {
       console.error("[Spoiler Shield] Initialization failed:", error);
@@ -163,6 +172,28 @@ class SpoilerShield {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif !important;
       }
 
+      /* Auto-scan indicator */
+      .spoiler-shield-scan-indicator {
+        position: fixed !important;
+        top: 20px !important;
+        left: 20px !important;
+        background: rgba(16, 185, 129, 0.9) !important;
+        color: white !important;
+        padding: 6px 12px !important;
+        border-radius: 15px !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        z-index: 2147483647 !important;
+        opacity: 0 !important;
+        transition: opacity 0.3s ease !important;
+        pointer-events: none !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif !important;
+      }
+
+      .spoiler-shield-scan-indicator.active {
+        opacity: 1 !important;
+      }
+
       /* Additional fallback styles for stubborn elements */
       [data-spoiler-blurred="true"] .spoiler-shield-overlay {
         display: flex !important;
@@ -180,8 +211,172 @@ class SpoilerShield {
     console.log("[Spoiler Shield] CSS injected successfully");
   }
 
+  setupScrollMonitoring() {
+    let ticking = false;
+
+    const handleScroll = () => {
+      if (!ticking && this.isActive) {
+        requestAnimationFrame(() => {
+          const currentScrollY = window.pageYOffset || document.documentElement.scrollTop;
+          const scrollDifference = Math.abs(currentScrollY - this.lastScrollY);
+          
+          // Trigger scan if user scrolled more than 150px (more sensitive)
+          if (scrollDifference > 150) {
+            console.log("[Spoiler Shield] Scroll detected, scanning for new content");
+            this.showScanIndicator();
+            this.scanPage();
+            this.lastScrollY = currentScrollY;
+          }
+          
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    // Throttled scroll listener
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    
+    // Store for cleanup
+    this.observers.push({
+      disconnect: () => window.removeEventListener('scroll', handleScroll)
+    });
+
+    console.log("[Spoiler Shield] Scroll monitoring enabled");
+  }
+
+  setupIntersectionObserver() {
+    // Monitor when new elements come into view
+    this.intersectionObserver = new IntersectionObserver((entries) => {
+      let shouldScan = false;
+      
+      entries.forEach(entry => {
+        if (entry.isIntersecting && !this.processedElements.has(entry.target)) {
+          const text = this.extractTextContent(entry.target);
+          if (text.length > 3) {
+            shouldScan = true;
+            console.log("[Spoiler Shield] New element in view, checking for spoilers");
+          }
+        }
+      });
+
+      if (shouldScan) {
+        this.scanPage();
+      }
+    }, {
+      root: null,
+      rootMargin: '50px',
+      threshold: 0.1
+    });
+
+    // Start observing existing elements
+    this.observeVisibleElements();
+
+    console.log("[Spoiler Shield] Intersection observer enabled");
+  }
+
+  observeVisibleElements() {
+    const selectors = this.getSiteSpecificSelectors();
+    selectors.forEach(selector => {
+      try {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(element => {
+          if (!this.processedElements.has(element)) {
+            this.intersectionObserver?.observe(element);
+          }
+        });
+      } catch (e) {
+        // Ignore failed selectors
+      }
+    });
+  }
+
+  setupAutoRescan() {
+    // Clear any existing interval first
+    if (this.autoScanInterval) {
+      clearInterval(this.autoScanInterval);
+    }
+
+    // Automatic rescan every 2 seconds when page is active (more frequent)
+    this.autoScanInterval = setInterval(() => {
+      if (this.isActive && document.visibilityState === 'visible') {
+        console.log("[Spoiler Shield] Auto-rescan triggered - checking for new spoilers");
+        this.scanPage();
+      }
+    }, 2000);
+
+    // Rescan when page becomes visible again
+    const visibilityHandler = () => {
+      if (this.isActive && document.visibilityState === 'visible') {
+        console.log("[Spoiler Shield] Page visible, rescanning");
+        setTimeout(() => this.scanPage(), 200);
+      }
+    };
+    document.addEventListener('visibilitychange', visibilityHandler);
+    
+    // Store for cleanup
+    this.observers.push({
+      disconnect: () => document.removeEventListener('visibilitychange', visibilityHandler)
+    });
+
+    // Rescan when window regains focus
+    const focusHandler = () => {
+      if (this.isActive) {
+        console.log("[Spoiler Shield] Window focused, rescanning");
+        setTimeout(() => this.scanPage(), 100);
+      }
+    };
+    window.addEventListener('focus', focusHandler);
+    
+    // Store for cleanup
+    this.observers.push({
+      disconnect: () => window.removeEventListener('focus', focusHandler)
+    });
+
+    console.log("[Spoiler Shield] Auto-rescan enabled (every 2 seconds)");
+  }
+
+  showScanIndicator() {
+    // Remove existing indicator
+    const existingIndicator = document.querySelector('.spoiler-shield-scan-indicator');
+    if (existingIndicator) {
+      existingIndicator.remove();
+    }
+
+    // Create new indicator
+    const indicator = document.createElement('div');
+    indicator.className = 'spoiler-shield-scan-indicator';
+    indicator.textContent = '🛡️ Scanning...';
+    
+    document.body.appendChild(indicator);
+    
+    // Show indicator
+    setTimeout(() => indicator.classList.add('active'), 10);
+    
+    // Hide after 1 second
+    setTimeout(() => {
+      indicator.classList.remove('active');
+      setTimeout(() => {
+        if (indicator.parentNode) {
+          indicator.remove();
+        }
+      }, 300);
+    }, 1000);
+  }
+
   scanPage() {
-    if (!this.isActive || this.watchlist.length === 0) return;
+    if (!this.isActive || this.watchlist.length === 0) {
+      console.log("[Spoiler Shield] Scan skipped - not active or no watchlist");
+      return;
+    }
+
+    // Throttle scanning to prevent too frequent calls
+    const now = Date.now();
+    if (now - this.lastScanTime < this.scanCooldown) {
+      console.log("[Spoiler Shield] Scan throttled");
+      return;
+    }
+    this.lastScanTime = now;
 
     if (this.scanTimeout) {
       clearTimeout(this.scanTimeout);
@@ -189,28 +384,44 @@ class SpoilerShield {
 
     this.scanTimeout = setTimeout(() => {
       try {
+        console.log("[Spoiler Shield] Starting page scan...");
         this.scanTextContent();
+        this.observeVisibleElements(); // Re-observe new elements
+        console.log("[Spoiler Shield] Page scan completed");
       } catch (error) {
         console.error("[Spoiler Shield] Scan error:", error);
       }
-    }, 100);
+    }, 50); // Reduced delay for faster scanning
   }
 
   scanTextContent() {
     const siteSelectors = this.getSiteSpecificSelectors();
+    let newElementsFound = 0;
     
     siteSelectors.forEach(selector => {
       try {
         const elements = document.querySelectorAll(selector);
+        console.log(`[Spoiler Shield] Found ${elements.length} elements for selector: ${selector}`);
+        
         elements.forEach(element => {
           if (!this.processedElements.has(element)) {
-            this.checkAndBlurElement(element);
+            // Debug: log what text we're checking
+            const text = this.extractTextContent(element);
+            if (text.length > 3) {
+              console.log(`[Spoiler Shield] Checking text: "${text.substring(0, 100)}..."`);
+              this.checkAndBlurElement(element);
+              newElementsFound++;
+            }
           }
         });
       } catch (e) {
         console.warn("[Spoiler Shield] Failed selector:", selector, e.message);
       }
     });
+
+    if (newElementsFound > 0) {
+      console.log(`[Spoiler Shield] Processed ${newElementsFound} new elements`);
+    }
   }
 
   getSiteSpecificSelectors() {
@@ -218,6 +429,7 @@ class SpoilerShield {
     
     if (hostname.includes('reddit.com')) {
       return [
+        // Main post containers
         '[data-testid="post-container"]',
         '.Post',
         '[data-click="thing"]',
@@ -225,9 +437,32 @@ class SpoilerShield {
         '.scrollerItem',
         'shreddit-post',
         '[slot="full-post-container"]',
+        
+        // Individual post elements that contain titles
+        'h3[slot="title"]',
+        '[data-testid="post-content"]',
+        'faceplate-tracker[source="post_title"]',
+        'h1[slot="title"]',
+        'h2[slot="title"]',
+        
+        // Reddit's new design selectors
+        'div[data-testid="post-container"] h3',
+        'div[data-testid="post-container"] [slot="title"]',
+        'article h3',
+        'article [data-click-id="text"]',
+        
+        // Legacy Reddit
+        '.title a.title',
+        '.entry .title a',
+        
+        // Comments
         '.Comment',
         '.commentarea .comment',
-        '[data-testid="comment"]'
+        '[data-testid="comment"]',
+        
+        // Fallback selectors for any missed content
+        '[data-adclicklocation="title"]',
+        '[data-click-id="body"]'
       ];
     }
     
@@ -236,7 +471,10 @@ class SpoilerShield {
         '[data-testid="tweet"]',
         'article[data-testid="tweet"]',
         '[data-testid="cellInnerDiv"] article',
-        '.tweet'
+        '.tweet',
+        // Additional Twitter/X selectors
+        '[data-testid="tweetText"]',
+        '[role="group"][aria-labelledby]'
       ];
     }
     
@@ -244,7 +482,30 @@ class SpoilerShield {
       return [
         '[data-pagelet="FeedUnit"]',
         '[role="article"]',
-        '.userContentWrapper'
+        '.userContentWrapper',
+        // Additional Facebook selectors
+        '[data-testid="story-body"]',
+        '.story_body_container'
+      ];
+    }
+
+    if (hostname.includes('youtube.com')) {
+      return [
+        '#video-title',
+        '.ytd-video-meta-block',
+        '#content-text',
+        '#description-text',
+        'yt-formatted-string.ytd-video-primary-info-renderer',
+        '.ytd-comment-renderer'
+      ];
+    }
+
+    if (hostname.includes('instagram.com')) {
+      return [
+        'article[role="presentation"]',
+        '._a9zs',
+        '._ae2s',
+        '.x1i10hfl'
       ];
     }
     
@@ -256,7 +517,10 @@ class SpoilerShield {
       'h1', 'h2', 'h3',
       '.title',
       '.headline',
-      'p'
+      'p',
+      '.feed-item',
+      '.story',
+      '.entry'
     ];
   }
 
@@ -287,7 +551,28 @@ class SpoilerShield {
     return this.watchlist.find(term => {
       const termLower = term.toLowerCase().trim();
       if (!termLower) return false;
-      return text.includes(termLower) || this.fuzzyMatch(text, termLower);
+      
+      // Direct match
+      if (text.includes(termLower)) {
+        return true;
+      }
+      
+      // Try fuzzy matching
+      if (this.fuzzyMatch(text, termLower)) {
+        return true;
+      }
+      
+      // For multi-word terms like "Formula 1", also try matching individual significant words
+      if (termLower.includes(' ')) {
+        const words = termLower.split(' ').filter(word => word.length > 2);
+        // If we find all significant words, consider it a match
+        const foundWords = words.filter(word => text.includes(word));
+        if (foundWords.length === words.length) {
+          return true;
+        }
+      }
+      
+      return false;
     });
   }
 
@@ -378,34 +663,7 @@ class SpoilerShield {
     revealButton.innerHTML = `🚫 SHOW SPOILER 🚫`;
     revealButton.title = `Spoiler detected: "${term}" - Click to reveal`;
     
-    // Force button visibility
-    revealButton.style.cssText = `
-      all: initial !important;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif !important;
-      background: linear-gradient(135deg, #ff6b6b, #ee5a24) !important;
-      color: #ffffff !important;
-      border: 3px solid #ffffff !important;
-      padding: 14px 24px !important;
-      border-radius: 30px !important;
-      font-size: 16px !important;
-      font-weight: 700 !important;
-      cursor: pointer !important;
-      z-index: 2147483647 !important;
-      pointer-events: auto !important;
-      box-shadow: 0 6px 20px rgba(255, 107, 107, 0.5) !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      white-space: nowrap !important;
-      line-height: 1.2 !important;
-      text-align: center !important;
-      min-width: 160px !important;
-      opacity: 1 !important;
-      visibility: visible !important;
-      position: relative !important;
-      margin: 0 !important;
-      outline: none !important;
-    `;
+    // Don't override with inline styles - let CSS classes handle it
 
     // Click handler
     const revealHandler = (e) => {
@@ -456,8 +714,6 @@ class SpoilerShield {
     revealButton.offsetHeight;
 
     console.log(`[Spoiler Shield] Successfully created overlay with ID: ${overlayId}`);
-    console.log("[Spoiler Shield] Button element:", revealButton);
-    console.log("[Spoiler Shield] Overlay element:", overlayContainer);
   }
 
   showRevealNotification(element, term) {
@@ -490,6 +746,10 @@ class SpoilerShield {
           mutation.addedNodes.forEach(node => {
             if (node.nodeType === Node.ELEMENT_NODE && this.hasTextContent(node)) {
               this.checkAndBlurElement(node);
+              // Also observe the new element with intersection observer
+              if (!this.processedElements.has(node)) {
+                this.intersectionObserver?.observe(node);
+              }
               shouldScan = true;
             }
           });
@@ -508,16 +768,7 @@ class SpoilerShield {
 
     this.observers.push(mutationObserver);
 
-    // Periodic scanning
-    const intervalId = setInterval(() => {
-      if (this.isActive) {
-        this.scanPage();
-      }
-    }, 2000);
-
-    this.observers.push({ disconnect: () => clearInterval(intervalId) });
-
-    console.log("[Spoiler Shield] Observers set up");
+    console.log("[Spoiler Shield] Mutation observers set up");
   }
 
   hasTextContent(element) {
@@ -533,6 +784,16 @@ class SpoilerShield {
       }
     });
     this.observers = [];
+
+    if (this.intersectionObserver) {
+      this.intersectionObserver.disconnect();
+      this.intersectionObserver = null;
+    }
+
+    if (this.autoScanInterval) {
+      clearInterval(this.autoScanInterval);
+      this.autoScanInterval = null;
+    }
   }
 
   handleMessage(message) {
@@ -584,6 +845,12 @@ class SpoilerShield {
     if (styleElement) {
       styleElement.remove();
     }
+
+    // Clean up scan indicator
+    const indicator = document.querySelector('.spoiler-shield-scan-indicator');
+    if (indicator) {
+      indicator.remove();
+    }
   }
 }
 
@@ -613,7 +880,7 @@ if (!window.spoilerShieldInstance) {
     window.spoilerShieldLoaded = false;
   });
 
-  console.log("[Spoiler Shield] Content script loaded and ready (v1.4 - Ultra-Visible Button)");
+  console.log("[Spoiler Shield] Content script loaded with auto-rescan (v1.5)");
 }
 
 } // End of spoilerShieldLoaded check
