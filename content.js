@@ -7,66 +7,63 @@ if (window.spoilerShieldLoaded) {
 } else {
   window.spoilerShieldLoaded = true;
 
-class SpoilerShield {
-  constructor() {
-    this.watchlist = [];
-    this.processedElements = new WeakSet();
-    this.isActive = false;
-    this.observers = [];
-    this.scanTimeout = null;
-    this.overlayCounter = 0;
-    this.lastScrollY = 0;
-    this.scrollTimeout = null;
-    this.autoScanInterval = null;
-    this.intersectionObserver = null;
-    this.lastScanTime = 0;
-    this.scanCooldown = 300; // Minimum time between scans (ms)
-  }
+  class SpoilerShield {
+    constructor() {
+      this.watchlist = [];
+      this.processedElements = new WeakSet();
+      this.isActive = false;
+      this.observers = [];
+      this.scanTimeout = null;
+      this.overlayCounter = 0;
+      this.lastScrollY = 0;
+      this.scrollTimeout = null;
+      this.autoScanInterval = null;
+      this.intersectionObserver = null;
+      this.lastScanTime = 0;
+      this.scanCooldown = 300; // Minimum time between scans (ms)
+    }
 
-  async initialize() {
-    try {
-      // Get watchlist from storage
-      const result = await chrome.storage.sync.get(['watchlist']);
-      this.watchlist = result.watchlist || [];
-      
-      console.log("[Spoiler Shield] Watchlist loaded:", this.watchlist);
-      
-      if (this.watchlist.length === 0) {
-        console.log("[Spoiler Shield] No watchlist items found");
-        return;
+    async initialize() {
+      try {
+        // Get watchlist from storage
+        const result = await chrome.storage.sync.get(["watchlist"]);
+        this.watchlist = result.watchlist || [];
+
+        // console.log("[Spoiler Shield] Watchlist loaded:", this.watchlist);
+
+        if (this.watchlist.length === 0) {
+          // console.log("[Spoiler Shield] No watchlist items found");
+          return;
+        }
+
+        this.isActive = true;
+
+        // Inject CSS for better overlay styling
+        this.injectOverlayCSS();
+
+        // Start scanning immediately
+        this.scanPage();
+
+        // Set up all monitoring systems
+        this.setupObservers();
+        this.setupScrollMonitoring();
+        this.setupIntersectionObserver();
+        this.setupAutoRescan();
+      } catch (error) {
+        console.error("[Spoiler Shield] Initialization failed:", error);
+      }
+    }
+
+    injectOverlayCSS() {
+      // Remove existing styles first
+      const existingStyle = document.getElementById("spoiler-shield-styles");
+      if (existingStyle) {
+        existingStyle.remove();
       }
 
-      this.isActive = true;
-      
-      // Inject CSS for better overlay styling
-      this.injectOverlayCSS();
-      
-      // Start scanning immediately
-      this.scanPage();
-      
-      // Set up all monitoring systems
-      this.setupObservers();
-      this.setupScrollMonitoring();
-      this.setupIntersectionObserver();
-      this.setupAutoRescan();
-      
-      console.log("[Spoiler Shield] Initialized with auto-rescan (v1.5)");
-      
-    } catch (error) {
-      console.error("[Spoiler Shield] Initialization failed:", error);
-    }
-  }
-
-  injectOverlayCSS() {
-    // Remove existing styles first
-    const existingStyle = document.getElementById('spoiler-shield-styles');
-    if (existingStyle) {
-      existingStyle.remove();
-    }
-    
-    const style = document.createElement('style');
-    style.id = 'spoiler-shield-styles';
-    style.textContent = `
+      const style = document.createElement("style");
+      style.id = "spoiler-shield-styles";
+      style.textContent = `
       /* Force styles with maximum specificity */
       .spoiler-shield-wrapper {
         position: relative !important;
@@ -207,437 +204,437 @@ class SpoilerShield {
         opacity: 1 !important;
       }
     `;
-    document.head.appendChild(style);
-    console.log("[Spoiler Shield] CSS injected successfully");
-  }
+      document.head.appendChild(style);
+      // console.log("[Spoiler Shield] CSS injected successfully");
+    }
 
-  setupScrollMonitoring() {
-    let ticking = false;
+    setupScrollMonitoring() {
+      let ticking = false;
 
-    const handleScroll = () => {
-      if (!ticking && this.isActive) {
-        requestAnimationFrame(() => {
-          const currentScrollY = window.pageYOffset || document.documentElement.scrollTop;
-          const scrollDifference = Math.abs(currentScrollY - this.lastScrollY);
-          
-          // Trigger scan if user scrolled more than 150px (more sensitive)
-          if (scrollDifference > 150) {
-            console.log("[Spoiler Shield] Scroll detected, scanning for new content");
-            this.showScanIndicator();
+      const handleScroll = () => {
+        if (!ticking && this.isActive) {
+          requestAnimationFrame(() => {
+            const currentScrollY =
+              window.pageYOffset || document.documentElement.scrollTop;
+            const scrollDifference = Math.abs(
+              currentScrollY - this.lastScrollY
+            );
+
+            // Trigger scan if user scrolled more than 150px (more sensitive)
+            if (scrollDifference > 150) {
+              // console.log("[Spoiler Shield] Scroll detected, scanning for new content");
+              this.showScanIndicator();
+              this.scanPage();
+              this.lastScrollY = currentScrollY;
+            }
+
+            ticking = false;
+          });
+          ticking = true;
+        }
+      };
+
+      // Throttled scroll listener
+      window.addEventListener("scroll", handleScroll, { passive: true });
+
+      // Store for cleanup
+      this.observers.push({
+        disconnect: () => window.removeEventListener("scroll", handleScroll),
+      });
+    }
+
+    setupIntersectionObserver() {
+      // Monitor when new elements come into view
+      this.intersectionObserver = new IntersectionObserver(
+        (entries) => {
+          let shouldScan = false;
+
+          entries.forEach((entry) => {
+            if (
+              entry.isIntersecting &&
+              !this.processedElements.has(entry.target)
+            ) {
+              const text = this.extractTextContent(entry.target);
+              if (text.length > 3) {
+                shouldScan = true;
+              }
+            }
+          });
+
+          if (shouldScan) {
             this.scanPage();
-            this.lastScrollY = currentScrollY;
           }
-          
-          ticking = false;
-        });
-        ticking = true;
-      }
-    };
+        },
+        {
+          root: null,
+          rootMargin: "50px",
+          threshold: 0.1,
+        }
+      );
 
-    // Throttled scroll listener
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    
-    // Store for cleanup
-    this.observers.push({
-      disconnect: () => window.removeEventListener('scroll', handleScroll)
-    });
+      // Start observing existing elements
+      this.observeVisibleElements();
+    }
 
-    console.log("[Spoiler Shield] Scroll monitoring enabled");
-  }
-
-  setupIntersectionObserver() {
-    // Monitor when new elements come into view
-    this.intersectionObserver = new IntersectionObserver((entries) => {
-      let shouldScan = false;
-      
-      entries.forEach(entry => {
-        if (entry.isIntersecting && !this.processedElements.has(entry.target)) {
-          const text = this.extractTextContent(entry.target);
-          if (text.length > 3) {
-            shouldScan = true;
-            console.log("[Spoiler Shield] New element in view, checking for spoilers");
-          }
+    observeVisibleElements() {
+      const selectors = this.getSiteSpecificSelectors();
+      selectors.forEach((selector) => {
+        try {
+          const elements = document.querySelectorAll(selector);
+          elements.forEach((element) => {
+            if (!this.processedElements.has(element)) {
+              this.intersectionObserver?.observe(element);
+            }
+          });
+        } catch (e) {
+          // Ignore failed selectors
         }
       });
-
-      if (shouldScan) {
-        this.scanPage();
-      }
-    }, {
-      root: null,
-      rootMargin: '50px',
-      threshold: 0.1
-    });
-
-    // Start observing existing elements
-    this.observeVisibleElements();
-
-    console.log("[Spoiler Shield] Intersection observer enabled");
-  }
-
-  observeVisibleElements() {
-    const selectors = this.getSiteSpecificSelectors();
-    selectors.forEach(selector => {
-      try {
-        const elements = document.querySelectorAll(selector);
-        elements.forEach(element => {
-          if (!this.processedElements.has(element)) {
-            this.intersectionObserver?.observe(element);
-          }
-        });
-      } catch (e) {
-        // Ignore failed selectors
-      }
-    });
-  }
-
-  setupAutoRescan() {
-    // Clear any existing interval first
-    if (this.autoScanInterval) {
-      clearInterval(this.autoScanInterval);
     }
 
-    // Automatic rescan every 2 seconds when page is active (more frequent)
-    this.autoScanInterval = setInterval(() => {
-      if (this.isActive && document.visibilityState === 'visible') {
-        console.log("[Spoiler Shield] Auto-rescan triggered - checking for new spoilers");
-        this.scanPage();
+    setupAutoRescan() {
+      // Clear any existing interval first
+      if (this.autoScanInterval) {
+        clearInterval(this.autoScanInterval);
       }
-    }, 2000);
 
-    // Rescan when page becomes visible again
-    const visibilityHandler = () => {
-      if (this.isActive && document.visibilityState === 'visible') {
-        console.log("[Spoiler Shield] Page visible, rescanning");
-        setTimeout(() => this.scanPage(), 200);
-      }
-    };
-    document.addEventListener('visibilitychange', visibilityHandler);
-    
-    // Store for cleanup
-    this.observers.push({
-      disconnect: () => document.removeEventListener('visibilitychange', visibilityHandler)
-    });
-
-    // Rescan when window regains focus
-    const focusHandler = () => {
-      if (this.isActive) {
-        console.log("[Spoiler Shield] Window focused, rescanning");
-        setTimeout(() => this.scanPage(), 100);
-      }
-    };
-    window.addEventListener('focus', focusHandler);
-    
-    // Store for cleanup
-    this.observers.push({
-      disconnect: () => window.removeEventListener('focus', focusHandler)
-    });
-
-    console.log("[Spoiler Shield] Auto-rescan enabled (every 2 seconds)");
-  }
-
-  showScanIndicator() {
-    // Remove existing indicator
-    const existingIndicator = document.querySelector('.spoiler-shield-scan-indicator');
-    if (existingIndicator) {
-      existingIndicator.remove();
-    }
-
-    // Create new indicator
-    const indicator = document.createElement('div');
-    indicator.className = 'spoiler-shield-scan-indicator';
-    indicator.textContent = '🛡️ Scanning...';
-    
-    document.body.appendChild(indicator);
-    
-    // Show indicator
-    setTimeout(() => indicator.classList.add('active'), 10);
-    
-    // Hide after 1 second
-    setTimeout(() => {
-      indicator.classList.remove('active');
-      setTimeout(() => {
-        if (indicator.parentNode) {
-          indicator.remove();
+      // Automatic rescan every 2 seconds when page is active (more frequent)
+      this.autoScanInterval = setInterval(() => {
+        if (this.isActive && document.visibilityState === "visible") {
+          this.scanPage();
         }
-      }, 300);
-    }, 1000);
-  }
+      }, 2000);
 
-  scanPage() {
-    if (!this.isActive || this.watchlist.length === 0) {
-      console.log("[Spoiler Shield] Scan skipped - not active or no watchlist");
-      return;
+      // Rescan when page becomes visible again
+      const visibilityHandler = () => {
+        if (this.isActive && document.visibilityState === "visible") {
+          setTimeout(() => this.scanPage(), 200);
+        }
+      };
+      document.addEventListener("visibilitychange", visibilityHandler);
+
+      // Store for cleanup
+      this.observers.push({
+        disconnect: () =>
+          document.removeEventListener("visibilitychange", visibilityHandler),
+      });
+
+      // Rescan when window regains focus
+      const focusHandler = () => {
+        if (this.isActive) {
+          setTimeout(() => this.scanPage(), 100);
+        }
+      };
+      window.addEventListener("focus", focusHandler);
+
+      // Store for cleanup
+      this.observers.push({
+        disconnect: () => window.removeEventListener("focus", focusHandler),
+      });
     }
 
-    // Throttle scanning to prevent too frequent calls
-    const now = Date.now();
-    if (now - this.lastScanTime < this.scanCooldown) {
-      console.log("[Spoiler Shield] Scan throttled");
-      return;
-    }
-    this.lastScanTime = now;
-
-    if (this.scanTimeout) {
-      clearTimeout(this.scanTimeout);
-    }
-
-    this.scanTimeout = setTimeout(() => {
-      try {
-        console.log("[Spoiler Shield] Starting page scan...");
-        this.scanTextContent();
-        this.observeVisibleElements(); // Re-observe new elements
-        console.log("[Spoiler Shield] Page scan completed");
-      } catch (error) {
-        console.error("[Spoiler Shield] Scan error:", error);
+    showScanIndicator() {
+      // Remove existing indicator
+      const existingIndicator = document.querySelector(
+        ".spoiler-shield-scan-indicator"
+      );
+      if (existingIndicator) {
+        existingIndicator.remove();
       }
-    }, 50); // Reduced delay for faster scanning
-  }
 
-  scanTextContent() {
-    const siteSelectors = this.getSiteSpecificSelectors();
-    let newElementsFound = 0;
-    
-    siteSelectors.forEach(selector => {
-      try {
-        const elements = document.querySelectorAll(selector);
-        console.log(`[Spoiler Shield] Found ${elements.length} elements for selector: ${selector}`);
-        
-        elements.forEach(element => {
-          if (!this.processedElements.has(element)) {
-            // Debug: log what text we're checking
-            const text = this.extractTextContent(element);
-            if (text.length > 3) {
-              console.log(`[Spoiler Shield] Checking text: "${text.substring(0, 100)}..."`);
-              this.checkAndBlurElement(element);
-              newElementsFound++;
-            }
+      // Create new indicator
+      const indicator = document.createElement("div");
+      indicator.className = "spoiler-shield-scan-indicator";
+      indicator.textContent = "🛡️ Scanning...";
+
+      document.body.appendChild(indicator);
+
+      // Show indicator
+      setTimeout(() => indicator.classList.add("active"), 10);
+
+      // Hide after 1 second
+      setTimeout(() => {
+        indicator.classList.remove("active");
+        setTimeout(() => {
+          if (indicator.parentNode) {
+            indicator.remove();
           }
-        });
-      } catch (e) {
-        console.warn("[Spoiler Shield] Failed selector:", selector, e.message);
+        }, 300);
+      }, 1000);
+    }
+
+    scanPage() {
+      if (!this.isActive || this.watchlist.length === 0) {
+        return;
       }
-    });
 
-    if (newElementsFound > 0) {
-      console.log(`[Spoiler Shield] Processed ${newElementsFound} new elements`);
-    }
-  }
-
-  getSiteSpecificSelectors() {
-    const hostname = window.location.hostname.toLowerCase();
-    
-    if (hostname.includes('reddit.com')) {
-      return [
-        // Main post containers
-        '[data-testid="post-container"]',
-        '.Post',
-        '[data-click="thing"]',
-        '.thing',
-        '.scrollerItem',
-        'shreddit-post',
-        '[slot="full-post-container"]',
-        
-        // Individual post elements that contain titles
-        'h3[slot="title"]',
-        '[data-testid="post-content"]',
-        'faceplate-tracker[source="post_title"]',
-        'h1[slot="title"]',
-        'h2[slot="title"]',
-        
-        // Reddit's new design selectors
-        'div[data-testid="post-container"] h3',
-        'div[data-testid="post-container"] [slot="title"]',
-        'article h3',
-        'article [data-click-id="text"]',
-        
-        // Legacy Reddit
-        '.title a.title',
-        '.entry .title a',
-        
-        // Comments
-        '.Comment',
-        '.commentarea .comment',
-        '[data-testid="comment"]',
-        
-        // Fallback selectors for any missed content
-        '[data-adclicklocation="title"]',
-        '[data-click-id="body"]'
-      ];
-    }
-    
-    if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
-      return [
-        '[data-testid="tweet"]',
-        'article[data-testid="tweet"]',
-        '[data-testid="cellInnerDiv"] article',
-        '.tweet',
-        // Additional Twitter/X selectors
-        '[data-testid="tweetText"]',
-        '[role="group"][aria-labelledby]'
-      ];
-    }
-    
-    if (hostname.includes('facebook.com')) {
-      return [
-        '[data-pagelet="FeedUnit"]',
-        '[role="article"]',
-        '.userContentWrapper',
-        // Additional Facebook selectors
-        '[data-testid="story-body"]',
-        '.story_body_container'
-      ];
-    }
-
-    if (hostname.includes('youtube.com')) {
-      return [
-        '#video-title',
-        '.ytd-video-meta-block',
-        '#content-text',
-        '#description-text',
-        'yt-formatted-string.ytd-video-primary-info-renderer',
-        '.ytd-comment-renderer'
-      ];
-    }
-
-    if (hostname.includes('instagram.com')) {
-      return [
-        'article[role="presentation"]',
-        '._a9zs',
-        '._ae2s',
-        '.x1i10hfl'
-      ];
-    }
-    
-    // Default selectors for testing and other sites
-    return [
-      'article',
-      '.post',
-      '.content',
-      'h1', 'h2', 'h3',
-      '.title',
-      '.headline',
-      'p',
-      '.feed-item',
-      '.story',
-      '.entry'
-    ];
-  }
-
-  checkAndBlurElement(element) {
-    if (!element || this.processedElements.has(element)) return;
-    
-    this.processedElements.add(element);
-    
-    const text = this.extractTextContent(element);
-    if (text.length < 3) return;
-    
-    const foundTerm = this.findMatchingTerm(text);
-
-    if (foundTerm) {
-      console.log(`[Spoiler Shield] Found "${foundTerm}" in text:`, text.substring(0, 100));
-      this.blurElement(element, foundTerm);
-    }
-  }
-
-  extractTextContent(element) {
-    const clone = element.cloneNode(true);
-    const scriptsAndStyles = clone.querySelectorAll('script, style, .spoiler-shield-overlay');
-    scriptsAndStyles.forEach(el => el.remove());
-    return (clone.textContent || '').toLowerCase().trim();
-  }
-
-  findMatchingTerm(text) {
-    return this.watchlist.find(term => {
-      const termLower = term.toLowerCase().trim();
-      if (!termLower) return false;
-      
-      // Direct match
-      if (text.includes(termLower)) {
-        return true;
+      // Throttle scanning to prevent too frequent calls
+      const now = Date.now();
+      if (now - this.lastScanTime < this.scanCooldown) {
+        return;
       }
-      
-      // Try fuzzy matching
-      if (this.fuzzyMatch(text, termLower)) {
-        return true;
+      this.lastScanTime = now;
+
+      if (this.scanTimeout) {
+        clearTimeout(this.scanTimeout);
       }
-      
-      // For multi-word terms like "Formula 1", also try matching individual significant words
-      if (termLower.includes(' ')) {
-        const words = termLower.split(' ').filter(word => word.length > 2);
-        // If we find all significant words, consider it a match
-        const foundWords = words.filter(word => text.includes(word));
-        if (foundWords.length === words.length) {
+
+      this.scanTimeout = setTimeout(() => {
+        try {
+          this.scanTextContent();
+          this.observeVisibleElements(); // Re-observe new elements
+        } catch (error) {
+          console.error("[Spoiler Shield] Scan error:", error);
+        }
+      }, 50); // Reduced delay for faster scanning
+    }
+
+    scanTextContent() {
+      const siteSelectors = this.getSiteSpecificSelectors();
+      let newElementsFound = 0;
+
+      siteSelectors.forEach((selector) => {
+        try {
+          const elements = document.querySelectorAll(selector);
+          console.log(
+            `[Spoiler Shield] Found ${elements.length} elements for selector: ${selector}`
+          );
+
+          elements.forEach((element) => {
+            if (!this.processedElements.has(element)) {
+              // Debug: log what text we're checking
+              const text = this.extractTextContent(element);
+              if (text.length > 3) {
+                // console.log(`[Spoiler Shield] Checking text: "${text.substring(0, 100)}..."`);
+                this.checkAndBlurElement(element);
+                newElementsFound++;
+              }
+            }
+          });
+        } catch (e) {
+          console.warn(
+            "[Spoiler Shield] Failed selector:",
+            selector,
+            e.message
+          );
+        }
+      });
+    }
+
+    getSiteSpecificSelectors() {
+      const hostname = window.location.hostname.toLowerCase();
+
+      if (hostname.includes("reddit.com")) {
+        return [
+          // Main post containers
+          '[data-testid="post-container"]',
+          ".Post",
+          '[data-click="thing"]',
+          ".thing",
+          ".scrollerItem",
+          "shreddit-post",
+          '[slot="full-post-container"]',
+
+          // Individual post elements that contain titles
+          'h3[slot="title"]',
+          '[data-testid="post-content"]',
+          'faceplate-tracker[source="post_title"]',
+          'h1[slot="title"]',
+          'h2[slot="title"]',
+
+          // Reddit's new design selectors
+          'div[data-testid="post-container"] h3',
+          'div[data-testid="post-container"] [slot="title"]',
+          "article h3",
+          'article [data-click-id="text"]',
+
+          // Legacy Reddit
+          ".title a.title",
+          ".entry .title a",
+
+          // Comments
+          ".Comment",
+          ".commentarea .comment",
+          '[data-testid="comment"]',
+
+          // Fallback selectors for any missed content
+          '[data-adclicklocation="title"]',
+          '[data-click-id="body"]',
+        ];
+      }
+
+      if (hostname.includes("twitter.com") || hostname.includes("x.com")) {
+        return [
+          '[data-testid="tweet"]',
+          'article[data-testid="tweet"]',
+          '[data-testid="cellInnerDiv"] article',
+          ".tweet",
+          // Additional Twitter/X selectors
+          '[data-testid="tweetText"]',
+          '[role="group"][aria-labelledby]',
+        ];
+      }
+
+      if (hostname.includes("facebook.com")) {
+        return [
+          '[data-pagelet="FeedUnit"]',
+          '[role="article"]',
+          ".userContentWrapper",
+          // Additional Facebook selectors
+          '[data-testid="story-body"]',
+          ".story_body_container",
+        ];
+      }
+
+      if (hostname.includes("youtube.com")) {
+        return [
+          "#video-title",
+          ".ytd-video-meta-block",
+          "#content-text",
+          "#description-text",
+          "yt-formatted-string.ytd-video-primary-info-renderer",
+          ".ytd-comment-renderer",
+        ];
+      }
+
+      if (hostname.includes("instagram.com")) {
+        return [
+          'article[role="presentation"]',
+          "._a9zs",
+          "._ae2s",
+          ".x1i10hfl",
+        ];
+      }
+
+      // Default selectors for testing and other sites
+      return [
+        "article",
+        ".post",
+        ".content",
+        "h1",
+        "h2",
+        "h3",
+        ".title",
+        ".headline",
+        "p",
+        ".feed-item",
+        ".story",
+        ".entry",
+      ];
+    }
+
+    checkAndBlurElement(element) {
+      if (!element || this.processedElements.has(element)) return;
+
+      this.processedElements.add(element);
+
+      const text = this.extractTextContent(element);
+      if (text.length < 3) return;
+
+      const foundTerm = this.findMatchingTerm(text);
+
+      if (foundTerm) {
+        this.blurElement(element, foundTerm);
+      }
+    }
+
+    extractTextContent(element) {
+      const clone = element.cloneNode(true);
+      const scriptsAndStyles = clone.querySelectorAll(
+        "script, style, .spoiler-shield-overlay"
+      );
+      scriptsAndStyles.forEach((el) => el.remove());
+      return (clone.textContent || "").toLowerCase().trim();
+    }
+
+    findMatchingTerm(text) {
+      return this.watchlist.find((term) => {
+        const termLower = term.toLowerCase().trim();
+        if (!termLower) return false;
+
+        // Direct match
+        if (text.includes(termLower)) {
           return true;
         }
+
+        // Try fuzzy matching
+        if (this.fuzzyMatch(text, termLower)) {
+          return true;
+        }
+
+        // For multi-word terms like "Formula 1", also try matching individual significant words
+        if (termLower.includes(" ")) {
+          const words = termLower.split(" ").filter((word) => word.length > 2);
+          // If we find all significant words, consider it a match
+          const foundWords = words.filter((word) => text.includes(word));
+          if (foundWords.length === words.length) {
+            return true;
+          }
+        }
+
+        return false;
+      });
+    }
+
+    fuzzyMatch(text, term) {
+      const variations = [
+        term,
+        `${term}s`,
+        term.replace(/\s+/g, ""),
+        term.replace(/\s+/g, "_"),
+        term.replace(/\s+/g, "-"),
+      ];
+
+      if (term.includes(" ")) {
+        const words = term.split(" ").filter((word) => word.length > 2);
+        variations.push(...words);
       }
-      
-      return false;
-    });
-  }
 
-  fuzzyMatch(text, term) {
-    const variations = [
-      term,
-      `${term}s`,
-      term.replace(/\s+/g, ''),
-      term.replace(/\s+/g, '_'),
-      term.replace(/\s+/g, '-')
-    ];
-    
-    if (term.includes(' ')) {
-      const words = term.split(' ').filter(word => word.length > 2);
-      variations.push(...words);
+      return variations.some((variation) => text.includes(variation));
     }
-    
-    return variations.some(variation => text.includes(variation));
-  }
 
-  blurElement(element, term) {
-    if (element.dataset.spoilerBlurred) {
-      console.log("[Spoiler Shield] Element already blurred, skipping");
-      return;
-    }
-    
-    this.overlayCounter++;
-    const overlayId = `spoiler-overlay-${this.overlayCounter}`;
-    
-    console.log(`[Spoiler Shield] Blurring element for term: ${term}`);
-    
-    // Mark element
-    element.dataset.spoilerBlurred = 'true';
-    element.dataset.spoilerTerm = term;
-    element.dataset.overlayId = overlayId;
+    blurElement(element, term) {
+      if (element.dataset.spoilerBlurred) {
+        return;
+      }
 
-    // Add wrapper class for positioning
-    element.classList.add('spoiler-shield-wrapper');
-    
-    // Store original styles
-    const originalStyles = {
-      position: element.style.position,
-      zIndex: element.style.zIndex,
-      overflow: element.style.overflow
-    };
+      this.overlayCounter++;
+      const overlayId = `spoiler-overlay-${this.overlayCounter}`;
 
-    // Ensure proper positioning
-    const computedStyle = window.getComputedStyle(element);
-    if (computedStyle.position === 'static') {
-      element.style.position = 'relative';
-    }
-    
-    // Prevent content from overflowing and hiding the button
-    element.style.overflow = 'visible';
+      // Mark element
+      element.dataset.spoilerBlurred = "true";
+      element.dataset.spoilerTerm = term;
+      element.dataset.overlayId = overlayId;
 
-    // Apply blur effect
-    element.classList.add('spoiler-shield-blurred');
+      // Add wrapper class for positioning
+      element.classList.add("spoiler-shield-wrapper");
 
-    // Create overlay with maximum visibility
-    const overlayContainer = document.createElement('div');
-    overlayContainer.className = 'spoiler-shield-overlay';
-    overlayContainer.id = overlayId;
-    
-    // Force display properties
-    overlayContainer.style.cssText = `
+      // Store original styles
+      const originalStyles = {
+        position: element.style.position,
+        zIndex: element.style.zIndex,
+        overflow: element.style.overflow,
+      };
+
+      // Ensure proper positioning
+      const computedStyle = window.getComputedStyle(element);
+      if (computedStyle.position === "static") {
+        element.style.position = "relative";
+      }
+
+      // Prevent content from overflowing and hiding the button
+      element.style.overflow = "visible";
+
+      // Apply blur effect
+      element.classList.add("spoiler-shield-blurred");
+
+      // Create overlay with maximum visibility
+      const overlayContainer = document.createElement("div");
+      overlayContainer.className = "spoiler-shield-overlay";
+      overlayContainer.id = overlayId;
+
+      // Force display properties
+      overlayContainer.style.cssText = `
       position: absolute !important;
       top: 0 !important;
       left: 0 !important;
@@ -656,231 +653,235 @@ class SpoilerShield {
       min-width: 120px !important;
     `;
 
-    // Create ultra-visible button
-    const revealButton = document.createElement('button');
-    revealButton.className = 'spoiler-shield-button';
-    revealButton.type = 'button';
-    revealButton.innerHTML = `🚫 SHOW SPOILER 🚫`;
-    revealButton.title = `Spoiler detected: "${term}" - Click to reveal`;
-    
-    // Don't override with inline styles - let CSS classes handle it
+      // Create ultra-visible button
+      const revealButton = document.createElement("button");
+      revealButton.className = "spoiler-shield-button";
+      revealButton.type = "button";
+      revealButton.innerHTML = `🚫 SHOW SPOILER 🚫`;
+      revealButton.title = `Spoiler detected: "${term}" - Click to reveal`;
 
-    // Click handler
-    const revealHandler = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      
-      console.log(`[Spoiler Shield] Revealing spoiler: ${term}`);
-      
-      // Remove all spoiler effects
-      element.classList.remove('spoiler-shield-blurred', 'spoiler-shield-wrapper');
-      
-      // Restore original styles
-      Object.keys(originalStyles).forEach(prop => {
-        if (originalStyles[prop]) {
-          element.style[prop] = originalStyles[prop];
+      // Don't override with inline styles - let CSS classes handle it
+
+      // Click handler
+      const revealHandler = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        // Remove all spoiler effects
+        element.classList.remove(
+          "spoiler-shield-blurred",
+          "spoiler-shield-wrapper"
+        );
+
+        // Restore original styles
+        Object.keys(originalStyles).forEach((prop) => {
+          if (originalStyles[prop]) {
+            element.style[prop] = originalStyles[prop];
+          }
+        });
+
+        // Clean up data attributes
+        delete element.dataset.spoilerBlurred;
+        delete element.dataset.spoilerTerm;
+        delete element.dataset.overlayId;
+
+        // Remove overlay
+        overlayContainer.remove();
+
+        // Show notification
+        this.showRevealNotification(element, term);
+      };
+
+      // Add multiple event listeners for reliability
+      revealButton.addEventListener("click", revealHandler, { once: true });
+      revealButton.addEventListener("touchstart", revealHandler, {
+        once: true,
+      });
+      overlayContainer.addEventListener("click", (e) => {
+        if (e.target === overlayContainer) {
+          revealHandler(e);
         }
       });
-      
-      // Clean up data attributes
-      delete element.dataset.spoilerBlurred;
-      delete element.dataset.spoilerTerm;
-      delete element.dataset.overlayId;
-      
-      // Remove overlay
-      overlayContainer.remove();
-      
-      // Show notification
-      this.showRevealNotification(element, term);
-    };
 
-    // Add multiple event listeners for reliability
-    revealButton.addEventListener('click', revealHandler, { once: true });
-    revealButton.addEventListener('touchstart', revealHandler, { once: true });
-    overlayContainer.addEventListener('click', (e) => {
-      if (e.target === overlayContainer) {
-        revealHandler(e);
-      }
-    });
+      // Assemble and insert
+      overlayContainer.appendChild(revealButton);
+      element.appendChild(overlayContainer);
 
-    // Assemble and insert
-    overlayContainer.appendChild(revealButton);
-    element.appendChild(overlayContainer);
+      // Force a reflow to ensure visibility
+      element.offsetHeight;
+      overlayContainer.offsetHeight;
+      revealButton.offsetHeight;
+    }
 
-    // Force a reflow to ensure visibility
-    element.offsetHeight;
-    overlayContainer.offsetHeight;
-    revealButton.offsetHeight;
+    showRevealNotification(element, term) {
+      const notification = document.createElement("div");
+      notification.className = "spoiler-shield-notification";
+      notification.textContent = `✅ Spoiler Revealed!`;
 
-    console.log(`[Spoiler Shield] Successfully created overlay with ID: ${overlayId}`);
-  }
+      element.appendChild(notification);
 
-  showRevealNotification(element, term) {
-    const notification = document.createElement('div');
-    notification.className = 'spoiler-shield-notification';
-    notification.textContent = `✅ Spoiler Revealed!`;
+      setTimeout(() => {
+        notification.style.opacity = "0";
+        notification.style.transform = "translateY(-10px)";
+      }, 2500);
 
-    element.appendChild(notification);
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.remove();
+        }
+      }, 2800);
+    }
 
-    setTimeout(() => {
-      notification.style.opacity = '0';
-      notification.style.transform = 'translateY(-10px)';
-    }, 2500);
-    
-    setTimeout(() => {
-      if (notification.parentNode) {
-        notification.remove();
-      }
-    }, 2800);
-  }
+    setupObservers() {
+      this.cleanupObservers();
 
-  setupObservers() {
-    this.cleanupObservers();
+      const mutationObserver = new MutationObserver((mutations) => {
+        let shouldScan = false;
 
-    const mutationObserver = new MutationObserver((mutations) => {
-      let shouldScan = false;
-      
-      mutations.forEach((mutation) => {
-        if (mutation.addedNodes.length > 0) {
-          mutation.addedNodes.forEach(node => {
-            if (node.nodeType === Node.ELEMENT_NODE && this.hasTextContent(node)) {
-              this.checkAndBlurElement(node);
-              // Also observe the new element with intersection observer
-              if (!this.processedElements.has(node)) {
-                this.intersectionObserver?.observe(node);
+        mutations.forEach((mutation) => {
+          if (mutation.addedNodes.length > 0) {
+            mutation.addedNodes.forEach((node) => {
+              if (
+                node.nodeType === Node.ELEMENT_NODE &&
+                this.hasTextContent(node)
+              ) {
+                this.checkAndBlurElement(node);
+                // Also observe the new element with intersection observer
+                if (!this.processedElements.has(node)) {
+                  this.intersectionObserver?.observe(node);
+                }
+                shouldScan = true;
               }
-              shouldScan = true;
-            }
-          });
+            });
+          }
+        });
+
+        if (shouldScan) {
+          this.scanPage();
         }
       });
 
-      if (shouldScan) {
-        this.scanPage();
-      }
-    });
+      mutationObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
 
-    mutationObserver.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-
-    this.observers.push(mutationObserver);
-
-    console.log("[Spoiler Shield] Mutation observers set up");
-  }
-
-  hasTextContent(element) {
-    if (!element || element.nodeType !== Node.ELEMENT_NODE) return false;
-    const text = element.textContent?.trim() || '';
-    return text.length > 5;
-  }
-
-  cleanupObservers() {
-    this.observers.forEach(observer => {
-      if (observer.disconnect) {
-        observer.disconnect();
-      }
-    });
-    this.observers = [];
-
-    if (this.intersectionObserver) {
-      this.intersectionObserver.disconnect();
-      this.intersectionObserver = null;
+      this.observers.push(mutationObserver);
     }
 
-    if (this.autoScanInterval) {
-      clearInterval(this.autoScanInterval);
-      this.autoScanInterval = null;
+    hasTextContent(element) {
+      if (!element || element.nodeType !== Node.ELEMENT_NODE) return false;
+      const text = element.textContent?.trim() || "";
+      return text.length > 5;
     }
-  }
 
-  handleMessage(message) {
-    if (message.action === 'updateWatchlist') {
-      this.watchlist = message.watchlist || [];
-      this.processedElements = new WeakSet();
-      console.log("[Spoiler Shield] Watchlist updated:", this.watchlist);
-      
-      if (this.watchlist.length > 0) {
-        this.isActive = true;
+    cleanupObservers() {
+      this.observers.forEach((observer) => {
+        if (observer.disconnect) {
+          observer.disconnect();
+        }
+      });
+      this.observers = [];
+
+      if (this.intersectionObserver) {
+        this.intersectionObserver.disconnect();
+        this.intersectionObserver = null;
+      }
+
+      if (this.autoScanInterval) {
+        clearInterval(this.autoScanInterval);
+        this.autoScanInterval = null;
+      }
+    }
+
+    handleMessage(message) {
+      if (message.action === "updateWatchlist") {
+        this.watchlist = message.watchlist || [];
+        this.processedElements = new WeakSet();
+
+        if (this.watchlist.length > 0) {
+          this.isActive = true;
+          this.removeAllBlurs();
+          setTimeout(() => this.scanPage(), 200);
+        } else {
+          this.isActive = false;
+          this.removeAllBlurs();
+        }
+      } else if (message.action === "rescan") {
+        this.processedElements = new WeakSet();
         this.removeAllBlurs();
         setTimeout(() => this.scanPage(), 200);
-      } else {
-        this.isActive = false;
-        this.removeAllBlurs();
       }
-    } else if (message.action === 'rescan') {
-      this.processedElements = new WeakSet();
+    }
+
+    removeAllBlurs() {
+      const blurredElements = document.querySelectorAll(
+        '[data-spoiler-blurred="true"], .spoiler-shield-blurred'
+      );
+      blurredElements.forEach((element) => {
+        element.classList.remove(
+          "spoiler-shield-blurred",
+          "spoiler-shield-wrapper"
+        );
+
+        delete element.dataset.spoilerBlurred;
+        delete element.dataset.spoilerTerm;
+        delete element.dataset.overlayId;
+
+        const overlays = element.querySelectorAll(".spoiler-shield-overlay");
+        overlays.forEach((overlay) => overlay.remove());
+      });
+    }
+
+    destroy() {
+      this.cleanupObservers();
       this.removeAllBlurs();
-      setTimeout(() => this.scanPage(), 200);
-      console.log("[Spoiler Shield] Manual rescan completed");
+      this.isActive = false;
+
+      if (this.scanTimeout) {
+        clearTimeout(this.scanTimeout);
+      }
+
+      const styleElement = document.getElementById("spoiler-shield-styles");
+      if (styleElement) {
+        styleElement.remove();
+      }
+
+      // Clean up scan indicator
+      const indicator = document.querySelector(
+        ".spoiler-shield-scan-indicator"
+      );
+      if (indicator) {
+        indicator.remove();
+      }
     }
   }
 
-  removeAllBlurs() {
-    const blurredElements = document.querySelectorAll('[data-spoiler-blurred="true"], .spoiler-shield-blurred');
-    blurredElements.forEach(element => {
-      element.classList.remove('spoiler-shield-blurred', 'spoiler-shield-wrapper');
-      
-      delete element.dataset.spoilerBlurred;
-      delete element.dataset.spoilerTerm;
-      delete element.dataset.overlayId;
-      
-      const overlays = element.querySelectorAll('.spoiler-shield-overlay');
-      overlays.forEach(overlay => overlay.remove());
+  // Initialize only once
+  if (!window.spoilerShieldInstance) {
+    window.spoilerShieldInstance = new SpoilerShield();
+
+    // Set up message listener
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      window.spoilerShieldInstance.handleMessage(message);
+      sendResponse({ success: true });
     });
-  }
 
-  destroy() {
-    this.cleanupObservers();
-    this.removeAllBlurs();
-    this.isActive = false;
-    
-    if (this.scanTimeout) {
-      clearTimeout(this.scanTimeout);
-    }
-    
-    const styleElement = document.getElementById('spoiler-shield-styles');
-    if (styleElement) {
-      styleElement.remove();
-    }
-
-    // Clean up scan indicator
-    const indicator = document.querySelector('.spoiler-shield-scan-indicator');
-    if (indicator) {
-      indicator.remove();
-    }
-  }
-}
-
-// Initialize only once
-if (!window.spoilerShieldInstance) {
-  window.spoilerShieldInstance = new SpoilerShield();
-
-  // Set up message listener
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    window.spoilerShieldInstance.handleMessage(message);
-    sendResponse({ success: true });
-  });
-
-  // Initialize when DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
+    // Initialize when DOM is ready
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () => {
+        window.spoilerShieldInstance.initialize();
+      });
+    } else {
       window.spoilerShieldInstance.initialize();
+    }
+
+    // Cleanup when page unloads
+    window.addEventListener("beforeunload", () => {
+      window.spoilerShieldInstance.destroy();
+      window.spoilerShieldInstance = null;
+      window.spoilerShieldLoaded = false;
     });
-  } else {
-    window.spoilerShieldInstance.initialize();
   }
-
-  // Cleanup when page unloads
-  window.addEventListener('beforeunload', () => {
-    window.spoilerShieldInstance.destroy();
-    window.spoilerShieldInstance = null;
-    window.spoilerShieldLoaded = false;
-  });
-
-  console.log("[Spoiler Shield] Content script loaded with auto-rescan (v1.5)");
 }
-
-} // End of spoilerShieldLoaded check
