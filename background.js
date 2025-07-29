@@ -1,9 +1,6 @@
-// Enhanced Spoiler Shield Background Script with Toggle Support - v1.3
-console.log('[Background] Service worker loaded');
-
 // Extension installation/update handler
 chrome.runtime.onInstalled.addListener((details) => {
-  console.log('[Background] Extension installed/updated:', details.reason);
+  // console.log('[Background] Extension installed/updated:', details.reason);
   
   // Initialize storage with empty watchlist if not exists
   chrome.storage.sync.get(['watchlist', 'extensionEnabled'], (result) => {
@@ -21,7 +18,6 @@ chrome.runtime.onInstalled.addListener((details) => {
     
     if (Object.keys(updates).length > 0) {
       chrome.storage.sync.set(updates);
-      console.log('[Background] Storage initialized with:', updates);
     }
   });
 
@@ -39,8 +35,6 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // Handle messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[Background] Message received:', message.type || message.action);
-  
   switch (message.action || message.type) {
     case 'updateWatchlist':
       handleWatchlistUpdate(message.watchlist);
@@ -79,8 +73,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Handle extension toggle
 function handleToggle(enabled) {
-  console.log('[Background] Toggle extension:', enabled);
-  
   chrome.storage.sync.set({ extensionEnabled: enabled }, () => {
     // Update badge based on state
     updateBadgeForState(enabled);
@@ -92,8 +84,6 @@ function handleToggle(enabled) {
 
 // Handle watchlist updates
 function handleWatchlistUpdate(watchlist) {
-  console.log('[Background] Updating watchlist:', watchlist);
-  
   chrome.storage.sync.get(['extensionEnabled'], (result) => {
     const extensionEnabled = result.extensionEnabled !== false;
     
@@ -178,9 +168,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
           target: { tabId: tabId },
           files: ['content.js']
         });
-        console.log(`[Background] Content script injected into ${url.hostname}`);
       } catch (error) {
-        // Script might already be injected or tab might not be ready
         console.log(`[Background] Could not inject script into ${url.hostname}:`, error.message);
       }
     }
@@ -272,7 +260,6 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'sync') {
     if (changes.watchlist) {
-      console.log('[Background] Watchlist changed:', changes.watchlist.newValue);
       chrome.storage.sync.get(['extensionEnabled'], (result) => {
         const enabled = result.extensionEnabled !== false;
         updateBadgeForWatchlist(changes.watchlist.newValue || [], enabled);
@@ -280,7 +267,6 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     }
     
     if (changes.extensionEnabled) {
-      console.log('[Background] Extension state changed:', changes.extensionEnabled.newValue);
       updateBadgeForState(changes.extensionEnabled.newValue);
     }
     
@@ -334,5 +320,3 @@ chrome.runtime.onInstalled.addListener(keepServiceWorkerAlive);
 
 // Stop keep-alive when extension is suspended
 chrome.runtime.onSuspend.addListener(stopKeepAlive);
-
-console.log('[Background] Service worker ready with enhanced features and toggle support');
