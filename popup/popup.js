@@ -222,7 +222,7 @@ function updateToggleState() {
 // Add some quick suggestions
 function addQuickSuggestions() {
   const suggestions = [
-    'F1', 'Formula 1', 'Verstappen', 'Hamilton', 'Red Bull',
+    'Formula 1', 'Stranger Things', 'Red Bull',
     'Premier League', 'Champions League', 'Messi', 'Ronaldo',
     'House of the Dragon', 'Rings of Power', 'Stranger Things',
     'Marvel', 'Star Wars', 'Game of Thrones', 'Breaking Bad',

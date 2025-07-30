@@ -23,7 +23,6 @@ h1 {
 #content {
   padding: 20px;
   transition: opacity 0.3s ease;
-  border-radius: 100%;
 }
 
 p {
