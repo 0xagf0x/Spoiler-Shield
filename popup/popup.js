@@ -175,8 +175,8 @@ function toggleExtension() {
     updateToggleState();
     notifyContentScripts();
     
-    const message = extensionEnabled ? 'Spoiler Shield enabled!' : 'Spoiler Shield disabled!';
-    showToast(message);
+    // const message = extensionEnabled ? 'Spoiler Shield enabled!' : 'Spoiler Shield disabled!';
+    // showToast(message);
   });
 }
 
@@ -289,7 +289,7 @@ function addToggleButton() {
   const toggleBtn = document.createElement('button');
   toggleBtn.id = 'toggleBtn';
   toggleBtn.className = 'toggle-btn enabled';
-  toggleBtn.textContent = '🛡️ ON';
+  toggleBtn.textContent = 'ON';
   toggleBtn.title = 'Click to disable Spoiler Shield';
   
   toggleBtn.addEventListener('click', toggleExtension);
