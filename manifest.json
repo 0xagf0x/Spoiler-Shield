@@ -32,16 +32,9 @@
     "*://*.reddit.com/*",
     "*://*.twitter.com/*",
     "*://*.x.com/*",
-    "*://*.facebook.com/*",
     "*://*.google.com/*",
     "*://*.youtube.com/*",
-    "*://*.instagram.com/*",
-    "*://*.tiktok.com/*",
-    "*://*.linkedin.com/*",
-    "*://*.discord.com/*",
-    "*://*.news.ycombinator.com/*",
-    "*://*.medium.com/*",
-    "*://*.twitch.tv/*"
+    "*://*.instagram.com/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -53,16 +46,9 @@
         "*://*.reddit.com/*",
         "*://*.twitter.com/*",
         "*://*.x.com/*",
-        "*://*.facebook.com/*",
         "*://*.google.com/*",
         "*://*.youtube.com/*",
-        "*://*.instagram.com/*",
-        "*://*.tiktok.com/*",
-        "*://*.linkedin.com/*",
-        "*://*.discord.com/*",
-        "*://*.news.ycombinator.com/*",
-        "*://*.medium.com/*",
-        "*://*.twitch.tv/*"
+        "*://*.instagram.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_start",
