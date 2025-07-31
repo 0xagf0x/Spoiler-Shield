@@ -1,4 +1,4 @@
-// popup/popup.js - Firefox-compatible version
+// popup/popup.js - Chrome-compatible version
 
 const input = document.getElementById('input');
 const addBtn = document.getElementById('addBtn');
@@ -8,7 +8,7 @@ let currentWatchlist = [];
 let extensionEnabled = true;
 
 // Load existing watchlist and extension state on startup
-browser.storage.sync.get(['watchlist', 'extensionEnabled']).then((res) => {
+chrome.storage.sync.get(['watchlist', 'extensionEnabled'], (res) => {
   currentWatchlist = res.watchlist || [];
   extensionEnabled = res.extensionEnabled !== false; // Default to true if not set
   
@@ -46,7 +46,7 @@ function addItem() {
   currentWatchlist.push(value);
   
   // Save to storage
-  browser.storage.sync.set({ watchlist: currentWatchlist }).then(() => {
+  chrome.storage.sync.set({ watchlist: currentWatchlist }, () => {
     addToList(value);
     input.value = '';
     updateCounter();
@@ -68,7 +68,7 @@ function addToList(item) {
   itemText.className = 'item-text';
   
   const removeBtn = document.createElement('button');
-  removeBtn.textContent = 'x';
+  removeBtn.textContent = '×';
   removeBtn.className = 'remove-btn';
   removeBtn.title = 'Remove item';
   
@@ -94,7 +94,7 @@ function removeItem(item, listElement) {
   listElement.remove();
   
   // Update storage
-  browser.storage.sync.set({ watchlist: currentWatchlist }).then(() => {
+  chrome.storage.sync.set({ watchlist: currentWatchlist }, () => {
     updateCounter();
     notifyContentScripts();
     showToast('Removed from watchlist');
@@ -130,14 +130,17 @@ function updateCounter() {
 
 function notifyContentScripts() {
   // Notify all tabs with the updated watchlist and extension state
-  browser.tabs.query({}).then((tabs) => {
+  chrome.tabs.query({}, (tabs) => {
     tabs.forEach(tab => {
-      browser.tabs.sendMessage(tab.id, {
+      chrome.tabs.sendMessage(tab.id, {
         action: 'updateWatchlist',
         watchlist: extensionEnabled ? currentWatchlist : [],
         extensionEnabled: extensionEnabled
-      }).catch(() => {
+      }, () => {
         // Ignore errors for tabs without content script
+        if (chrome.runtime.lastError) {
+          // Silently ignore - tab doesn't have content script
+        }
       });
     });
   });
@@ -171,9 +174,15 @@ function toggleExtension() {
   extensionEnabled = !extensionEnabled;
   
   // Save state to storage
-  browser.storage.sync.set({ extensionEnabled }).then(() => {
+  chrome.storage.sync.set({ extensionEnabled }, () => {
     updateToggleState();
     notifyContentScripts();
+    
+    // Update badge in background
+    chrome.runtime.sendMessage({
+      action: 'toggleExtension',
+      enabled: extensionEnabled
+    });
   });
 }
 
@@ -197,21 +206,18 @@ function updateToggleState() {
     const removeButtons = document.querySelectorAll('.remove-btn');
     removeButtons.forEach(btn => {
       btn.disabled = !extensionEnabled;
-      btn.style.opacity = extensionEnabled ? '1' : '0.5';
     });
     
     // Disable/enable quick suggestion buttons
     const suggestionButtons = document.querySelectorAll('.quick-suggestions button');
     suggestionButtons.forEach(btn => {
       btn.disabled = !extensionEnabled;
-      btn.style.opacity = extensionEnabled ? '1' : '0.5';
     });
     
     // Disable/enable rescan button
-    const rescanBtn = document.querySelector('button[style*="width: 100%"]');
+    const rescanBtn = document.getElementById('rescanBtn');
     if (rescanBtn) {
       rescanBtn.disabled = !extensionEnabled;
-      rescanBtn.style.opacity = extensionEnabled ? '1' : '0.5';
     }
   }
 }
@@ -219,55 +225,40 @@ function updateToggleState() {
 // Add some quick suggestions
 function addQuickSuggestions() {
   const suggestions = [
-    'Formula 1', 'Stranger Things', 'Red Bull',
-    'Premier League', 'Champions League', 'Messi', 'Ronaldo',
-    'House of the Dragon', 'Rings of Power', 'Stranger Things',
-    'Marvel', 'Star Wars', 'Game of Thrones', 'Breaking Bad',
-    'Taylor Swift', 'Drake', 'Kanye', 'BTS', 'Beyonce',
-    'Trump', 'Biden', 'Election', 'Politics'
+    'Formula 1', 'F1', 'Premier League', 'Champions League',
+    'Stranger Things', 'House of the Dragon', 'Marvel', 'Star Wars'
   ];
   
   const quickDiv = document.createElement('div');
   quickDiv.className = 'quick-suggestions';
-  quickDiv.innerHTML = '<p style="margin: 10px 0 5px 0; font-size: 12px; opacity: 0.8;">Quick add:</p>';
+  
+  const quickTitle = document.createElement('p');
+  quickTitle.textContent = 'Quick add:';
+  quickDiv.appendChild(quickTitle);
   
   const suggestionContainer = document.createElement('div');
-  suggestionContainer.style.cssText = `
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-bottom: 15px;
-  `;
   
   // Add first 8 suggestions as buttons
   suggestions.slice(0, 8).forEach(suggestion => {
     const btn = document.createElement('button');
     btn.textContent = suggestion;
-    btn.style.cssText = `
-      padding: 4px 8px;
-      font-size: 10px;
-      background: rgba(255,255,255,0.2);
-      border: none;
-      border-radius: 12px;
-      color: white;
-      cursor: pointer;
-      transition: background 0.2s;
-    `;
+    btn.type = 'button';
     
     btn.addEventListener('click', () => {
       if (!extensionEnabled) return;
+      
+      // Check if already exists
+      const exists = currentWatchlist.some(item => 
+        item.toLowerCase() === suggestion.toLowerCase()
+      );
+      
+      if (exists) {
+        showToast('Already in watchlist!');
+        return;
+      }
+      
       input.value = suggestion;
       addItem();
-    });
-    
-    btn.addEventListener('mouseover', () => {
-      if (extensionEnabled) {
-        btn.style.background = 'rgba(255,255,255,0.3)';
-      }
-    });
-    
-    btn.addEventListener('mouseout', () => {
-      btn.style.background = 'rgba(255,255,255,0.2)';
     });
     
     suggestionContainer.appendChild(btn);
@@ -275,10 +266,9 @@ function addQuickSuggestions() {
   
   quickDiv.appendChild(suggestionContainer);
   
-  // Insert after the input section
+  // Insert after the add button
   const content = document.getElementById('content');
-  const firstP = content.querySelector('p');
-  firstP.parentNode.insertBefore(quickDiv, list);
+  content.insertBefore(quickDiv, list);
 }
 
 // Add toggle button
@@ -287,11 +277,12 @@ function addToggleButton() {
   toggleBtn.id = 'toggleBtn';
   toggleBtn.className = 'toggle-btn enabled';
   toggleBtn.textContent = 'ON';
+  toggleBtn.type = 'button';
   toggleBtn.title = 'Click to disable Spoiler Shield';
   
   toggleBtn.addEventListener('click', toggleExtension);
   
-  // Insert at the top of content, right after the header
+  // Insert at the top of content
   const content = document.getElementById('content');
   content.insertBefore(toggleBtn, content.firstChild);
 }
@@ -299,17 +290,22 @@ function addToggleButton() {
 // Add rescan button
 function addRescanButton() {
   const rescanBtn = document.createElement('button');
+  rescanBtn.id = 'rescanBtn';
   rescanBtn.textContent = 'Rescan Current Page';
+  rescanBtn.type = 'button';
   rescanBtn.style.cssText = `
     width: 100%;
-    padding: 8px;
-    margin-top: 10px;
-    background: rgba(255,255,255,0.2);
+    padding: 10px;
+    margin-top: 15px;
+    background: rgba(255, 255, 255, 0.2);
     border: none;
-    border-radius: 4px;
+    border-radius: 8px;
     color: white;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(255, 255, 255, 0.3);
   `;
   
   rescanBtn.addEventListener('click', () => {
@@ -318,21 +314,101 @@ function addRescanButton() {
       return;
     }
     
-    browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]) {
-        browser.tabs.sendMessage(tabs[0].id, { action: 'rescan' })
-          .then(() => showToast('Page rescanned!'))
-          .catch(() => showToast('Could not rescan page'));
+        chrome.tabs.sendMessage(tabs[0].id, { action: 'rescan' }, (response) => {
+          if (chrome.runtime.lastError) {
+            showToast('Could not rescan - try refreshing the page');
+          } else {
+            showToast('Page rescanned!');
+          }
+        });
       }
     });
+  });
+  
+  rescanBtn.addEventListener('mouseenter', () => {
+    if (extensionEnabled) {
+      rescanBtn.style.background = 'rgba(255, 255, 255, 0.3)';
+      rescanBtn.style.transform = 'translateY(-1px)';
+    }
+  });
+  
+  rescanBtn.addEventListener('mouseleave', () => {
+    rescanBtn.style.background = 'rgba(255, 255, 255, 0.2)';
+    rescanBtn.style.transform = 'translateY(0)';
   });
   
   document.getElementById('content').appendChild(rescanBtn);
 }
 
+// Add status indicator
+function addStatusIndicator() {
+  const indicator = document.createElement('div');
+  indicator.className = 'status-indicator';
+  indicator.id = 'statusIndicator';
+  
+  // Position it in the header
+  const header = document.querySelector('h1');
+  header.style.position = 'relative';
+  header.appendChild(indicator);
+  
+  // Update indicator based on extension state
+  function updateIndicator() {
+    if (extensionEnabled && currentWatchlist.length > 0) {
+      indicator.className = 'status-indicator';
+      indicator.title = `Active - protecting from ${currentWatchlist.length} terms`;
+    } else {
+      indicator.className = 'status-indicator inactive';
+      indicator.title = extensionEnabled ? 'No terms in watchlist' : 'Extension disabled';
+    }
+  }
+  
+  updateIndicator();
+  
+  // Update when state changes
+  const originalUpdateToggleState = updateToggleState;
+  updateToggleState = function() {
+    originalUpdateToggleState();
+    updateIndicator();
+  };
+  
+  const originalUpdateCounter = updateCounter;
+  updateCounter = function() {
+    originalUpdateCounter();
+    updateIndicator();
+  };
+}
+
 // Initialize enhancements when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+  // Add all the enhanced UI elements
   addToggleButton();
   addQuickSuggestions();
   addRescanButton();
+  addStatusIndicator();
+  
+  // Update the initial state
+  updateToggleState();
 });
+
+// Handle keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  // Ctrl/Cmd + Enter to add item
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    addItem();
+  }
+  
+  // Escape to clear input
+  if (e.key === 'Escape') {
+    input.value = '';
+    input.blur();
+  }
+});
+
+// Auto-focus input when popup opens
+setTimeout(() => {
+  if (extensionEnabled) {
+    input.focus();
+  }
+}, 100);
