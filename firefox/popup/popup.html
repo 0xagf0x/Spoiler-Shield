@@ -1,0 +1,23 @@
+<!-- popup/popup.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Spoiler Shield</title>
+  <link rel="stylesheet" href="popup.css" />
+  <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+</head>
+<body>
+  <h1>Spoiler Shield</h1>
+  <div id="content">
+    <p>Select shows or sports to shield:</p>
+    <input type="text" id="input" placeholder="e.g. F1, House of the Dragon" />
+    <button id="addBtn">Add</button>
+    <div data-keywords-used-container>
+      <span>Shields Added:</span>
+      <span data-keywords-used-value></span>
+    </div>
+    <ul id="watchlist"></ul>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

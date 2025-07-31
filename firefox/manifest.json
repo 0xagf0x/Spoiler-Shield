@@ -1,10 +1,11 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 2,
   "name": "Spoiler Shield",
   "version": "1.3.1",
   "description": "Hide spoilers on social media and news sites. Add keywords to your watchlist and browse worry-free until you're ready.",
   "author": "Your Name",
-  "action": {
+  
+  "browser_action": {
     "default_popup": "popup/popup.html",
     "default_title": "Spoiler Shield - Protect yourself from spoilers",
     "default_icon": {
@@ -14,32 +15,37 @@
       "128": "icons/icon-shield.png"
     }
   },
+  
   "icons": {
     "16": "icons/icon-shield.png",
     "32": "icons/icon-shield.png",
     "48": "icons/icon-shield.png",
     "128": "icons/icon-shield.png"
   },
+  
   "permissions": [
-    "scripting",
     "activeTab", 
     "storage",
     "contextMenus",
     "notifications",
-    "alarms"
-  ],
-  "host_permissions": [
+    "alarms",
     "*://*.reddit.com/*",
     "*://*.twitter.com/*",
     "*://*.x.com/*",
     "*://*.google.com/*",
     "*://*.youtube.com/*",
-    "*://*.instagram.com/*"
+    "*://*.instagram.com/*",
+    "*://*.facebook.com/*",
+    "*://*.tiktok.com/*",
+    "*://*.linkedin.com/*",
+    "*://*.discord.com/*"
   ],
+  
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "scripts": ["background.js"],
+    "persistent": false
   },
+  
   "content_scripts": [
     {
       "matches": [
@@ -48,19 +54,22 @@
         "*://*.x.com/*",
         "*://*.google.com/*",
         "*://*.youtube.com/*",
-        "*://*.instagram.com/*"
+        "*://*.instagram.com/*",
+        "*://*.facebook.com/*",
+        "*://*.tiktok.com/*",
+        "*://*.linkedin.com/*",
+        "*://*.discord.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_start",
       "all_frames": false
     }
   ],
+  
   "web_accessible_resources": [
-    {
-      "resources": ["icons/*.png"],
-      "matches": ["<all_urls>"]
-    }
+    "icons/*.png"
   ],
+  
   "commands": {
     "toggle-extension": {
       "suggested_key": {
@@ -77,8 +86,13 @@
       "description": "Open Spoiler Shield popup"
     }
   },
-  "minimum_chrome_version": "88",
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
-  }
+  
+  "applications": {
+    "gecko": {
+      "id": "spoiler-shield@yourname.com",
+      "strict_min_version": "57.0"
+    }
+  },
+  
+  "content_security_policy": "script-src 'self'; object-src 'self';"
 }

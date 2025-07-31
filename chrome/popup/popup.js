@@ -1,4 +1,4 @@
-// popup/popup.js - Enhanced version with On/Off Toggle
+// popup/popup.js - Firefox-compatible version
 
 const input = document.getElementById('input');
 const addBtn = document.getElementById('addBtn');
@@ -8,7 +8,7 @@ let currentWatchlist = [];
 let extensionEnabled = true;
 
 // Load existing watchlist and extension state on startup
-chrome.storage.sync.get(['watchlist', 'extensionEnabled'], (res) => {
+browser.storage.sync.get(['watchlist', 'extensionEnabled']).then((res) => {
   currentWatchlist = res.watchlist || [];
   extensionEnabled = res.extensionEnabled !== false; // Default to true if not set
   
@@ -46,7 +46,7 @@ function addItem() {
   currentWatchlist.push(value);
   
   // Save to storage
-  chrome.storage.sync.set({ watchlist: currentWatchlist }, () => {
+  browser.storage.sync.set({ watchlist: currentWatchlist }).then(() => {
     addToList(value);
     input.value = '';
     updateCounter();
@@ -94,7 +94,7 @@ function removeItem(item, listElement) {
   listElement.remove();
   
   // Update storage
-  chrome.storage.sync.set({ watchlist: currentWatchlist }, () => {
+  browser.storage.sync.set({ watchlist: currentWatchlist }).then(() => {
     updateCounter();
     notifyContentScripts();
     showToast('Removed from watchlist');
@@ -130,9 +130,9 @@ function updateCounter() {
 
 function notifyContentScripts() {
   // Notify all tabs with the updated watchlist and extension state
-  chrome.tabs.query({}, (tabs) => {
+  browser.tabs.query({}).then((tabs) => {
     tabs.forEach(tab => {
-      chrome.tabs.sendMessage(tab.id, {
+      browser.tabs.sendMessage(tab.id, {
         action: 'updateWatchlist',
         watchlist: extensionEnabled ? currentWatchlist : [],
         extensionEnabled: extensionEnabled
@@ -171,12 +171,9 @@ function toggleExtension() {
   extensionEnabled = !extensionEnabled;
   
   // Save state to storage
-  chrome.storage.sync.set({ extensionEnabled }, () => {
+  browser.storage.sync.set({ extensionEnabled }).then(() => {
     updateToggleState();
     notifyContentScripts();
-    
-    // const message = extensionEnabled ? 'Spoiler Shield enabled!' : 'Spoiler Shield disabled!';
-    // showToast(message);
   });
 }
 
@@ -321,9 +318,9 @@ function addRescanButton() {
       return;
     }
     
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
       if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'rescan' })
+        browser.tabs.sendMessage(tabs[0].id, { action: 'rescan' })
           .then(() => showToast('Page rescanned!'))
           .catch(() => showToast('Could not rescan page'));
       }
